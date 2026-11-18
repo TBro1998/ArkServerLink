@@ -1,0 +1,17 @@
+{
+	"fixed": {
+		"file_version": "0.1.0",
+		"product_version": "0.1.0"
+	},
+	"info": {
+		"0409": {
+			"FileVersion": "0.1.0",
+			"ProductVersion": "0.1.0",
+			"CompanyName": "arkfgf.com",
+			"FileDescription": "ARK 无公网联机客户端",
+			"LegalCopyright": "© 2026 arkfgf.com",
+			"ProductName": "ARKFGF 联机助手",
+			"Comments": "ARKFGF 联机助手"
+		}
+	}
+}

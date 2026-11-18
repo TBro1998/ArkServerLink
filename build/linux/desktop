@@ -1,0 +1,13 @@
+[Desktop Entry]
+Version=1.0
+Name=ARKFGF 联机助手
+Comment=ARK 无公网联机客户端
+# The Exec line includes %u to pass the URL to the application
+Exec=/usr/local/bin/arkserverlink %u
+Terminal=false
+Type=Application
+Icon=arkserverlink
+Categories=Utility;
+StartupWMClass=arkserverlink
+
+MimeType=x-scheme-handler/arkfgf-link; 

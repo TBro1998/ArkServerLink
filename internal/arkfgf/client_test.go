@@ -1,0 +1,197 @@
+package arkfgf
+
+import (
+	"context"
+	"errors"
+	"net/http"
+	"net/http/httptest"
+	"strings"
+	"testing"
+	"time"
+)
+
+func newTestServer(t *testing.T, h http.HandlerFunc) *Client {
+	t.Helper()
+	srv := httptest.NewServer(h)
+	t.Cleanup(srv.Close)
+	return New(srv.URL+"/api/v1/", "1.2.3")
+}
+
+func TestListRooms(t *testing.T) {
+	c := newTestServer(t, func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodGet || r.URL.Path != "/api/v1/link/rooms" {
+			t.Errorf("unexpected %s %s", r.Method, r.URL.Path)
+		}
+		if got := r.URL.Query().Get("q"); got != "孤岛" {
+			t.Errorf("q = %q", got)
+		}
+		if got := r.URL.Query().Get("page"); got != "2" {
+			t.Errorf("page = %q", got)
+		}
+		if ua := r.Header.Get("User-Agent"); ua != "ArkServerLink/1.2.3" {
+			t.Errorf("User-Agent = %q", ua)
+		}
+		if r.Header.Get("Authorization") != "" {
+			t.Error("公开接口不应带令牌")
+		}
+		w.Write([]byte(`{"items":[{"id":12,"name":"孤岛","map":"TheIsland","players":3,"max_players":70,
+			"password":true,"pvp":false,"mods":["731604991"],"tags":["新手"],"rates":{"xp":2,"tame":3,"harvest":1,"breeding":1},
+			"online":true,"last_seen":"2026-11-18T10:00:00Z","created_at":1797600000,"country":"CN","province":"浙江"}],
+			"total":1,"page":2,"pages":2,"stats":{"rooms":4,"players":9}}`))
+	})
+	res, err := c.ListRooms(context.Background(), " 孤岛 ", "", 2)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if res.Total != 1 || len(res.Items) != 1 || res.Pages != 2 {
+		t.Fatalf("res = %+v", res)
+	}
+	r := res.Items[0]
+	if r.ID != 12 || r.MaxPlayers != 70 || !r.Password || r.Rates.Tame != 3 || r.Mods[0] != "731604991" || r.Province != "浙江" {
+		t.Errorf("room = %+v", r)
+	}
+	if res.Stats == nil || res.Stats.Players != 9 {
+		t.Errorf("stats = %+v", res.Stats)
+	}
+	if r.LastSeen != UnixTime(time.Date(2026, 11, 18, 10, 0, 0, 0, time.UTC).Unix()) || r.CreatedAt != 1797600000 {
+		t.Errorf("时间解析错误: %d %d", r.LastSeen, r.CreatedAt)
+	}
+}
+
+func TestGetRoom(t *testing.T) {
+	c := newTestServer(t, func(w http.ResponseWriter, r *http.Request) {
+		switch r.URL.Path {
+		case "/api/v1/link/rooms/12":
+			w.Write([]byte(`{"id":12,"name":"x","last_seen":"0001-01-01T00:00:00Z","online":false,"mod_list":[{"id":"1","title":"Structures Plus"}]}`))
+		default:
+			w.WriteHeader(http.StatusNotFound)
+			w.Write([]byte(`{"error":"房间不存在","code":"not_found"}`))
+		}
+	})
+	d, err := c.GetRoom(context.Background(), 12)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if d.ID != 12 || d.Online || d.LastSeen != 0 || len(d.ModList) != 1 || d.ModList[0].Title != "Structures Plus" {
+		t.Errorf("detail = %+v", d)
+	}
+	_, err = c.GetRoom(context.Background(), 13)
+	if ErrorCode(err) != CodeNotFound {
+		t.Errorf("err = %v", err)
+	}
+}
+
+func TestJoin(t *testing.T) {
+	c := newTestServer(t, func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodPost || r.URL.Path != "/api/v1/link/rooms/12/join" {
+			t.Errorf("unexpected %s %s", r.Method, r.URL.Path)
+		}
+		if r.Header.Get("Authorization") != "Bearer jwt-1" {
+			t.Errorf("Authorization = %q", r.Header.Get("Authorization"))
+		}
+		w.Write([]byte(`{"room":{"id":12,"name":"孤岛"},"network_name":"ark-0123456789abcdef","credential":"abc=",
+			"credential_expires_at":1797600000,"peers":["tcp://et.arkfgf.com:11010","udp://et.arkfgf.com:11010"],
+			"server_ip":"10.126.126.1","game_port":7777,"query_port":27015}`))
+	})
+	res, err := c.Join(context.Background(), "jwt-1", 12)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if res.Room.Name != "孤岛" || res.NetworkName != "ark-0123456789abcdef" || len(res.Peers) != 2 ||
+		res.ServerIP != "10.126.126.1" || res.GamePort != 7777 || res.QueryPort != 27015 || res.CredentialExpiresAt != 1797600000 {
+		t.Errorf("res = %+v", res)
+	}
+
+	if _, err := c.Join(context.Background(), "", 12); !IsUnauthorized(err) {
+		t.Errorf("没有令牌应视为未登录: %v", err)
+	}
+}
+
+func TestErrors(t *testing.T) {
+	cases := []struct {
+		status     int
+		header     string
+		body       string
+		wantCode   string
+		wantRetry  time.Duration
+		wantMsgHas string
+	}{
+		{409, "", `{"error":"房间离线","code":"room_offline"}`, CodeRoomOffline, 0, "离线"},
+		{403, "", `{"error":"被封禁","code":"banned"}`, CodeBanned, 0, "封禁"},
+		{503, "30", `{"error":"凭证不足","code":"no_credentials"}`, CodeNoCredentials, 30 * time.Second, "名额"},
+		{401, "", `{"error":"invalid token"}`, CodeUnauthorized, 0, "登录"},
+		{429, "12", `{"error":"too many"}`, CodeRateLimited, 12 * time.Second, "12 秒"},
+		{400, "", `{"error":"参数不对","code":"bad_request"}`, "bad_request", 0, "参数不对"},
+		{502, "", `<html>bad gateway</html>`, "", 0, "暂时不可用"},
+	}
+	for _, tc := range cases {
+		c := newTestServer(t, func(w http.ResponseWriter, r *http.Request) {
+			if tc.header != "" {
+				w.Header().Set("Retry-After", tc.header)
+			}
+			w.WriteHeader(tc.status)
+			w.Write([]byte(tc.body))
+		})
+		_, err := c.Join(context.Background(), "t", 1)
+		var ae *APIError
+		if !errors.As(err, &ae) {
+			t.Fatalf("%d: err = %T %v", tc.status, err, err)
+		}
+		if ae.Status != tc.status || ae.Code != tc.wantCode || ae.RetryAfter != tc.wantRetry || !strings.Contains(ae.Message, tc.wantMsgHas) {
+			t.Errorf("%d: %+v", tc.status, ae)
+		}
+		if IsUnauthorized(err) != (tc.status == 401) {
+			t.Errorf("%d: IsUnauthorized = %v", tc.status, IsUnauthorized(err))
+		}
+	}
+}
+
+func TestNetworkError(t *testing.T) {
+	srv := httptest.NewServer(http.NotFoundHandler())
+	srv.Close()
+	_, err := New(srv.URL, "x").ListRooms(context.Background(), "", "", 0)
+	var ne *NetworkError
+	if !errors.As(err, &ne) || !strings.Contains(err.Error(), "无法连接") {
+		t.Errorf("err = %v", err)
+	}
+}
+
+func TestMeAcceptsBothFieldStyles(t *testing.T) {
+	for _, body := range []string{
+		`{"steam_id":"76561198000000001","name":"Rex","avatar_url":"https://a/b.jpg"}`,
+		`{"ID":3,"SteamID":"76561198000000001","Name":"Rex","AvatarURL":"https://a/b.jpg","CreatedAt":"2026-01-01T00:00:00Z"}`,
+	} {
+		c := newTestServer(t, func(w http.ResponseWriter, r *http.Request) {
+			if r.URL.Path != "/api/v1/me" || r.Header.Get("Authorization") != "Bearer tok" {
+				t.Errorf("unexpected %s %q", r.URL.Path, r.Header.Get("Authorization"))
+			}
+			w.Write([]byte(body))
+		})
+		u, err := c.Me(context.Background(), "tok")
+		if err != nil {
+			t.Fatal(err)
+		}
+		if *u != (User{SteamID: "76561198000000001", Name: "Rex", AvatarURL: "https://a/b.jpg"}) {
+			t.Errorf("user = %+v", u)
+		}
+	}
+}
+
+func TestSteamLoginURL(t *testing.T) {
+	got := New("https://arkfgf.com/api/v1", "x").SteamLoginURL(54321, "abc_DEF-123")
+	want := "https://arkfgf.com/api/v1/auth/steam/login?client_port=54321&state=abc_DEF-123"
+	if got != want {
+		t.Errorf("got %s", got)
+	}
+}
+
+func TestBaseURLFromEnv(t *testing.T) {
+	t.Setenv("ARKFGF_API", "")
+	if BaseURLFromEnv() != DefaultBaseURL {
+		t.Error("默认地址错误")
+	}
+	t.Setenv("ARKFGF_API", "http://127.0.0.1:8080/api/v1/")
+	if BaseURLFromEnv() != "http://127.0.0.1:8080/api/v1" {
+		t.Errorf("got %s", BaseURLFromEnv())
+	}
+}

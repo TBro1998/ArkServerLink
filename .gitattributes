@@ -1,0 +1,4 @@
+# 统一用 LF；shell 脚本在 CRLF 下无法执行
+* text=auto eol=lf
+*.ico binary
+*.png binary

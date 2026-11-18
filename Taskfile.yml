@@ -1,0 +1,137 @@
+version: '3'
+
+vars:
+  APP_NAME: "arkserverlink"
+  BIN_DIR: "bin"
+  PACKAGE_MANAGER: '{{.PACKAGE_MANAGER | default "npm"}}'
+  VITE_PORT: '{{.WAILS_VITE_PORT | default 9245}}'
+  # Target OS for build/package/run. Defaults to the host OS, and is overridden
+  # by `wails3 build GOOS=...` (or the GOOS env var) for cross-compilation. The
+  # tasks below dispatch to the matching platform Taskfile via this variable.
+  GOOS: '{{.GOOS | default OS}}'
+
+includes:
+  common: ./build/Taskfile.yml
+  windows: ./build/windows/Taskfile.yml
+  darwin: ./build/darwin/Taskfile.yml
+  linux: ./build/linux/Taskfile.yml
+
+tasks:
+  build:
+    summary: Builds the application
+    cmds:
+      - task: "{{.GOOS}}:build"
+
+  package:
+    summary: Packages a production build of the application
+    cmds:
+      - task: "{{.GOOS}}:package"
+
+  run:
+    summary: Runs the application
+    cmds:
+      - task: "{{.GOOS}}:run"
+
+  dev:
+    summary: Runs the application in development mode
+    cmds:
+      - wails3 dev -config ./build/config.yml -port {{.VITE_PORT}}
+
+  install:msix:tools:
+    summary: Installs tools required for Windows MSIX packaging
+    cmds:
+      - task: windows:install:msix:tools
+
+  setup:docker:
+    summary: Builds Docker image for cross-compilation (~800MB download)
+    cmds:
+      - task: common:setup:docker
+
+  build:server:
+    summary: Builds the application in server mode (no GUI, HTTP server only)
+    cmds:
+      - task: common:build:server
+
+  run:server:
+    summary: Runs the application in server mode
+    cmds:
+      - task: common:run:server
+
+  build:docker:
+    summary: Builds a Docker image for server mode deployment
+    cmds:
+      - task: common:build:docker
+
+  run:docker:
+    summary: Builds and runs the Docker image
+    cmds:
+      - task: common:run:docker
+
+  test:
+    summary: 运行 Go 测试（需要先 easytier:fetch；根包嵌入 frontend/dist，需要先构建过一次前端）
+    cmds:
+      - task: common:easytier:fetch
+      - go test ./...
+
+  devenv:udpecho:
+    summary: 编译联调用的 UDP 回显服务（Linux），挂载进服主节点容器
+    internal: true
+    sources:
+      - dev/udpecho/*.go
+    generates:
+      - dev/bin/udpecho
+    cmds:
+      - go build -o dev/bin/udpecho ./dev/udpecho
+    env:
+      GOOS: linux
+      GOARCH: amd64
+      CGO_ENABLED: "0"
+
+  devenv:up:
+    summary: 启动本地联调环境（Docker，房间网络名 room-dev），并签发一个测试凭证
+    deps: [devenv:udpecho]
+    cmds:
+      - docker compose -f dev/docker-compose.yml up -d
+      - cmd: echo "等待服主节点就绪..." && sleep 5
+      - docker compose -f dev/docker-compose.yml exec srv easytier-cli -o json credential generate --ttl 86400 --credential-id dev-player
+    env:
+      ROOM_NETWORK: room-dev
+
+  devenv:down:
+    summary: 停止并清理本地联调环境
+    cmds:
+      - docker compose -f dev/docker-compose.yml down -v
+
+  # 完整端到端（见 README「端到端联调」）：三个终端分别运行 e2e:web、e2e:owner、e2e:client
+
+  e2e:web:
+    summary: 在本机 8080 端口运行网站后端（../web/backend），公共节点指向 Docker 里的 pub
+    dir: ../web/backend
+    cmds:
+      - go run .
+    env:
+      PORT: "8080"
+      DB_PATH: '{{.ROOT_DIR}}/dev/bin/e2e-web.db'
+      JWT_SECRET: dev-jwt-secret
+      SITE_URL: http://127.0.0.1:8080
+      PUBLISH_ALLOW_PRIVATE: "true"
+      CLIENT_IP_HEADER: ""
+      LINK_PEERS: tcp://127.0.0.1:21010
+      LINK_RPC: ""
+
+  e2e:owner:
+    summary: 用 fakeowner 代替 Commander：登记房间、按房间网络名启动服主节点、每 10 秒心跳并签发凭证
+    deps: [devenv:udpecho]
+    cmds:
+      - docker compose -f dev/docker-compose.yml up -d pub
+      - go run ./dev/fakeowner -api {{.ARKFGF_API}}
+    vars:
+      ARKFGF_API: '{{.ARKFGF_API | default "http://127.0.0.1:8080/api/v1"}}'
+
+  e2e:client:
+    summary: 构建并运行客户端，连接本机的网站接口
+    cmds:
+      - task: build
+      - '{{.BIN_DIR}}/{{.APP_NAME}}{{exeExt}}'
+    env:
+      ARKFGF_API: '{{.ARKFGF_API | default "http://127.0.0.1:8080/api/v1"}}'

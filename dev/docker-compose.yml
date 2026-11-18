@@ -1,0 +1,51 @@
+# 本地联调环境：公共节点（模拟 arkfgf.com）+ 服主节点（模拟 Commander）。
+# 参数与 ../docs/p2p-link.md 的公共节点、服主节点一致（公共节点端口映射到 127.0.0.1:21010）。用法见 README「本地联调」。
+name: arkserverlink-dev
+
+x-easytier: &easytier
+  image: easytier/easytier:v2.6.4
+  restart: unless-stopped
+
+services:
+  pub:
+    <<: *easytier
+    ports:
+      - "21010:11010/tcp"
+      - "21010:11010/udp"
+    entrypoint: ["easytier-core"]
+    command:
+      - --network-name=arkfgf-pub
+      - --network-secret=dev-pub-secret
+      - --secure-mode
+      - --no-tun
+      - --listeners=tcp://0.0.0.0:11010
+      - --listeners=udp://0.0.0.0:11010
+      # 不转发任何游戏流量，只转发打洞信令
+      - --relay-network-whitelist=
+      - --relay-all-peer-rpc
+      - --console-log-level=warn
+
+  srv:
+    <<: *easytier
+    # 网络名必须与网站给房间分配的 network_name 一致：fakeowner 登记房间后用 ROOM_NETWORK 重建本服务；
+    # 单独联调 easytier 时默认 room-dev
+    environment:
+      ROOM_NETWORK: ${ROOM_NETWORK:-room-dev}
+    depends_on: [pub]
+    volumes:
+      - ./bin:/dev-bin:ro
+      - srvdata:/data
+    entrypoint: ["sh", "-c"]
+    command:
+      - >-
+        /dev-bin/udpecho 7777 &
+        exec easytier-core
+        --network-name $${ROOM_NETWORK} --network-secret dev-room-secret
+        --secure-mode --credential-file /data/cred.json
+        --peers tcp://pub:11010 --ipv4 10.126.126.1 --no-tun
+        --p2p-only --tcp-whitelist 0 --udp-whitelist 7777 7778 27015
+        --listeners tcp://0.0.0.0:0 udp://0.0.0.0:0
+        --console-log-level warn
+
+volumes:
+  srvdata:
