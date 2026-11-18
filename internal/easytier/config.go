@@ -28,7 +28,7 @@ const DefaultHostname = "arkfgf-player"
 type Config struct {
 	NetworkName string    `json:"networkName"`
 	Credential  string    `json:"credential"` // 服主签发的凭证私钥（base64），代替 network_secret
-	Peers       []string  `json:"peers"`      // 公共节点地址，如 tcp://et.arkfgf.com:11010
+	Peers       []string  `json:"peers"`      // 公共节点地址，如 wss://arkfgf.com/et/
 	Forwards    []Forward `json:"forwards"`
 	Hostname    string    `json:"hostname"` // 在服主 peer 表里显示的名字，可空
 }
