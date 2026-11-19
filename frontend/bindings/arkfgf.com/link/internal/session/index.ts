@@ -6,5 +6,6 @@ export {
 } from "./models.js";
 
 export type {
+    ServerStatus,
     Status
 } from "./models.js";

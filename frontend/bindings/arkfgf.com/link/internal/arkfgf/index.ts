@@ -10,6 +10,7 @@ export type {
     Room,
     RoomDetail,
     RoomList,
+    RoomServer,
     RoomStats,
     UnixTime,
     User

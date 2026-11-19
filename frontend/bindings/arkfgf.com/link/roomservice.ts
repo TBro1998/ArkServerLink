@@ -18,11 +18,14 @@ import * as arkfgf$0 from "./internal/arkfgf/models.js";
 import * as session$0 from "./internal/session/models.js";
 
 /**
- * EnterGame 让 Steam 启动 ARK 并直接连进当前房间（等同游戏内控制台的 open 命令）。
- * Steam 只接受游戏端口的地址。
+ * EnterGame 直接启动本机的 ARK 客户端并连进当前房间。
+ * 
+ * 用 -ExecCmds 让游戏启动后执行控制台的 open 命令，不经过 Steam 的启动器：
+ * Steam 的 +connect / steam://run 走它的服务器查询流程，对 127.0.0.1 会报
+ * "Unable to query server info for invite"，不会真的发出游戏报文（已实测）。
  */
-export function EnterGame(): $CancellablePromise<void> {
-    return $Call.ByID(3584857894);
+export function EnterGame(key: string): $CancellablePromise<void> {
+    return $Call.ByID(3584857894, key);
 }
 
 /**
