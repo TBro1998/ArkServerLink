@@ -89,3 +89,34 @@ func pickPorts(gamePort, queryPort int, free func(int) bool, random func() (int,
 	}
 	return Ports{}, errors.New("找不到空闲的 UDP 端口")
 }
+
+// ServerPorts 是房间里一台服务器要转发的端口（服务器上的游戏端口和查询端口）。
+type ServerPorts struct{ Game, Query int }
+
+// PickAllPorts 为房间里的每台服务器各选一组本机端口，按 servers 的顺序返回。
+// 每台服务器仍然优先用和服务器一样的端口；已经分给前面服务器的端口不会再被选中，
+// 所以多台服务器的 L、L+1、Q 两两不重叠。
+func PickAllPorts(servers []ServerPorts) ([]Ports, error) {
+	return pickAllPorts(servers, udpFree, randomUDPPort)
+}
+
+func pickAllPorts(servers []ServerPorts, free func(int) bool, random func() (int, error)) ([]Ports, error) {
+	if len(servers) == 0 {
+		return nil, errors.New("房间里没有服务器")
+	}
+	taken := map[int]bool{}
+	available := func(p int) bool { return !taken[p] && free(p) }
+	out := make([]Ports, 0, len(servers))
+	for _, s := range servers {
+		p, err := pickPorts(s.Game, s.Query, available, random)
+		if err != nil {
+			return nil, err
+		}
+		taken[p.Game], taken[p.Raw] = true, true
+		if p.Query > 0 {
+			taken[p.Query] = true
+		}
+		out = append(out, p)
+	}
+	return out, nil
+}

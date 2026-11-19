@@ -156,12 +156,14 @@ func shutdown(st state) {
 
 func register(ctx context.Context, st *state) error {
 	body := map[string]any{
-		"name": *name, "map": "TheIsland", "max_players": 70, "password": false, "pvp": false,
-		"arkapi": false, "cluster": "", "mods": []string{"731604991"}, "version": "358.24",
-		"rate_xp": 2, "rate_tame": 3, "rate_harvest": 2, "rate_breeding": 5,
-		"description": "fakeowner 登记的本地联调房间，服务器是 udpecho。", "tags": []string{"联调"},
-		"qq_group": "", "discord": "",
-		"game_port": 7777, "query_port": 27015, "server_ip": "10.126.126.1",
+		"name": *name, "description": "fakeowner 登记的本地联调房间，服务器是 udpecho。", "tags": []string{"联调"},
+		"qq_group": "", "discord": "", "server_ip": "10.126.126.1",
+		"servers": []map[string]any{{
+			"key": "1", "name": *name, "map": "TheIsland", "max_players": 70, "password": false, "pvp": false,
+			"arkapi": false, "cluster": "", "mods": []string{"731604991"}, "version": "358.24",
+			"rate_xp": 2, "rate_tame": 3, "rate_harvest": 2, "rate_breeding": 5,
+			"game_port": 7777, "query_port": 27015,
+		}},
 	}
 	var resp struct {
 		ID          int64    `json:"id"`
@@ -201,7 +203,8 @@ func heartbeat(ctx context.Context, st state, online bool, creds []credential, a
 		n = *players
 	}
 	body := map[string]any{
-		"online": online, "players": n,
+		"online":      online,
+		"servers":     []map[string]any{{"key": "1", "online": online, "players": n}},
 		"credentials": nonNil(creds), "revoked_ack": nonNil(acks),
 	}
 	var resp heartbeatResp

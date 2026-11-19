@@ -91,15 +91,19 @@ func TestJoin(t *testing.T) {
 		}
 		w.Write([]byte(`{"room":{"id":12,"name":"孤岛"},"network_name":"ark-0123456789abcdef","credential":"abc=",
 			"credential_expires_at":1797600000,"peers":["tcp://et.arkfgf.com:11010","udp://et.arkfgf.com:11010"],
-			"server_ip":"10.126.126.1","game_port":7777,"query_port":27015}`))
+			"server_ip":"10.126.126.1","servers":[{"key":"3","name":"孤岛 A","map":"TheIsland","online":true,"game_port":7777,"query_port":27015},
+			{"key":"5","name":"孤岛 B","map":"Ragnarok","online":false,"game_port":7779,"query_port":27017}]}`))
 	})
 	res, err := c.Join(context.Background(), "jwt-1", 12)
 	if err != nil {
 		t.Fatal(err)
 	}
 	if res.Room.Name != "孤岛" || res.NetworkName != "ark-0123456789abcdef" || len(res.Peers) != 2 ||
-		res.ServerIP != "10.126.126.1" || res.GamePort != 7777 || res.QueryPort != 27015 || res.CredentialExpiresAt != 1797600000 {
+		res.ServerIP != "10.126.126.1" || res.CredentialExpiresAt != 1797600000 || len(res.Servers) != 2 {
 		t.Errorf("res = %+v", res)
+	}
+	if s := res.Servers[1]; s.Key != "5" || s.Map != "Ragnarok" || s.Online || s.GamePort != 7779 || s.QueryPort != 27017 {
+		t.Errorf("server = %+v", s)
 	}
 
 	if _, err := c.Join(context.Background(), "", 12); !IsUnauthorized(err) {

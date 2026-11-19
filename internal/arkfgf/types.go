@@ -38,6 +38,19 @@ type Room struct {
 	CreatedAt   UnixTime `json:"created_at"`
 	Country     string   `json:"country"`
 	Province    string   `json:"province"`
+	// 房间里的服务器（一个房间 = 一个 Commander，可以有多台）；上面的地图、人数、倍率等是汇总值
+	Servers []RoomServer `json:"servers"`
+}
+
+// RoomServer 是房间里的一台服务器（公开信息，不含端口）。
+type RoomServer struct {
+	Name       string `json:"name"`
+	Map        string `json:"map"`
+	Players    int    `json:"players"`
+	MaxPlayers int    `json:"max_players"`
+	Password   bool   `json:"password"`
+	PvP        bool   `json:"pvp"`
+	Online     bool   `json:"online"`
 }
 
 // Mod 是房间详情里带名称的 Mod。
@@ -81,8 +94,18 @@ type JoinResult struct {
 	CredentialExpiresAt int64    `json:"credential_expires_at"`
 	Peers               []string `json:"peers"`
 	ServerIP            string   `json:"server_ip"`
-	GamePort            int      `json:"game_port"`
-	QueryPort           int      `json:"query_port"`
+	// 房间里的全部服务器：同一个虚拟 IP，靠端口区分，客户端为每台服务器各转发一组端口
+	Servers []JoinServer `json:"servers"`
+}
+
+// JoinServer 是加入响应里的一台服务器。Key 在房间内唯一（Commander 里的服务器 ID）。
+type JoinServer struct {
+	Key       string `json:"key"`
+	Name      string `json:"name"`
+	Map       string `json:"map"`
+	Online    bool   `json:"online"`
+	GamePort  int    `json:"game_port"`
+	QueryPort int    `json:"query_port"`
 }
 
 // User 是 GET /me 返回的当前用户。
