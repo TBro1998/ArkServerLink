@@ -3,11 +3,14 @@
 
 import * as AuthService from "./authservice.js";
 import * as RoomService from "./roomservice.js";
+import * as UpdateService from "./updateservice.js";
 export {
     AuthService,
-    RoomService
+    RoomService,
+    UpdateService
 };
 
 export type {
-    AuthState
+    AuthState,
+    UpdateState
 } from "./models.js";

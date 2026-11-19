@@ -11,7 +11,7 @@ info:
   description: "ARK 无公网联机客户端" # The application description
   copyright: "© 2026 arkfgf.com" # Copyright text
   comments: "ARKFGF 联机助手" # Comments
-  version: "0.1.0" # The application version（同步修改 main.go 的 version）
+  version: "0.1.0" # The application version（发布时由 scripts/set-version 按 tag 改写）
   # cfBundleIconName: "appicon" # The macOS icon name in Assets.car icon bundles (optional)
   #                               # Should match the name of your .icon file without the extension
   #                               # If not set and Assets.car exists, defaults to "appicon"

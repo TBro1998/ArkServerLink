@@ -1,0 +1,109 @@
+name: Release
+
+# 推送 v* tag 时构建 Windows 安装包和便携版，发布到 GitHub Release。
+# 客户端的自动更新和 arkfgf.com/download 都从 Release 读取，文件名约定见 internal/update/github.go 的 AssetKind。
+# 更新说明写在附注 tag 的正文里：git tag -a v0.2.0 -m "概括" -m "Markdown 正文"
+on:
+  push:
+    tags: ['v*']
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: windows-latest
+    defaults:
+      run:
+        shell: bash
+
+    steps:
+    - name: Checkout
+      uses: actions/checkout@v7
+
+    - name: Set up Go
+      uses: actions/setup-go@v7
+      with:
+        go-version-file: go.mod
+
+    - name: Set up Node.js
+      uses: actions/setup-node@v7
+      with:
+        node-version: 24
+        cache: npm
+        cache-dependency-path: frontend/package-lock.json
+
+    - name: Install Wails CLI and NSIS
+      run: |
+        # 和 go.mod 里的 wails 版本一致，生成的绑定和运行时才匹配
+        go install "github.com/wailsapp/wails/v3/cmd/wails3@$(go list -m -f '{{.Version}}' github.com/wailsapp/wails/v3)"
+        if ! command -v makensis >/dev/null; then
+          if [ ! -x "/c/Program Files (x86)/NSIS/makensis.exe" ]; then
+            choco install nsis -y --no-progress
+          fi
+          echo "C:\\Program Files (x86)\\NSIS" >> "$GITHUB_PATH"
+        fi
+
+    - name: Set version
+      run: go run ./scripts/set-version "$GITHUB_REF_NAME"
+
+    - name: Build installer
+      run: wails3 package
+
+    # 根包嵌入 frontend/dist，必须在构建之后测试
+    - name: Test
+      run: go test ./...
+
+    - name: Collect assets
+      run: |
+        VERSION="${GITHUB_REF_NAME#v}"
+        BASE="ArkServerLink-${VERSION}-windows-x64"
+        mkdir -p dist portable/ArkServerLink/easytier
+        cp bin/arkserverlink-amd64-installer.exe "dist/${BASE}-setup.exe"
+        # 便携版：解压即用，但不注册 arkfgf-link:// 协议，也不能自动更新
+        cp bin/arkserverlink.exe portable/ArkServerLink/
+        cp bin/easytier/easytier-core.exe bin/easytier/easytier-cli.exe bin/easytier/Packet.dll portable/ArkServerLink/easytier/
+        cp LICENSE portable/ArkServerLink/
+        (cd portable && 7z a -tzip "../dist/${BASE}-portable.zip" ArkServerLink >/dev/null)
+        (cd dist && sha256sum -- * > SHA256SUMS.txt && cat SHA256SUMS.txt)
+
+    - name: Prepare release notes
+      env:
+        TAG: ${{ github.ref_name }}
+      run: |
+        # actions/checkout 只把 tag 指向的提交取下来，附注 tag 对象会丢失，单独取一次
+        git fetch --force --depth=1 origin "refs/tags/${TAG}:refs/tags/${TAG}"
+        : > release-notes.md
+        if [ "$(git cat-file -t "$TAG")" = tag ]; then
+          git tag -l --format='%(contents:body)' "$TAG" > release-notes.md
+        fi
+        if [ -s release-notes.md ]; then
+          echo >> release-notes.md
+        fi
+        # 标记之后的内容（下载说明和自动生成的更新列表）只在 GitHub 上显示，网站和客户端显示更新说明时截掉
+        cat >> release-notes.md <<'EOF'
+        <!-- arkfgf:downloads -->
+        ## 下载
+
+        国内下载慢可以到 [arkfgf.com/download](https://arkfgf.com/download) 选择加速线路。已安装的联机助手会自动提示更新。
+
+        | 文件 | 说明 |
+        | --- | --- |
+        | `*-setup.exe` | 安装包（推荐）：注册网页上的「用联机助手加入」链接，支持自动更新 |
+        | `*-portable.zip` | 便携版：解压即用，不注册链接，不能自动更新 |
+        | `SHA256SUMS.txt` | 校验和 |
+
+        需要 Windows 10 / 11 64 位。
+        EOF
+        cat release-notes.md
+
+    - name: Create GitHub Release
+      uses: softprops/action-gh-release@v3
+      with:
+        name: ${{ github.ref_name }}
+        # 仓库直接提交到 main，没有 PR 可汇总，这里主要是为了末尾的 Full Changelog compare 链接
+        generate_release_notes: true
+        # v0.2.0-beta.1 这类带后缀的当作预发布，不出现在 /releases/latest 里，客户端也不会自动更新到它
+        prerelease: ${{ contains(github.ref_name, '-') }}
+        body_path: release-notes.md
+        files: dist/*

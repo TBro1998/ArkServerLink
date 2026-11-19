@@ -14,6 +14,7 @@ declare module "@wailsio/runtime" {
         interface CustomEvents {
             "auth:changed": main$0.AuthState;
             "deeplink:join": number;
+            "update:changed": main$0.UpdateState;
         }
     }
 }

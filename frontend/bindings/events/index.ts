@@ -18,3 +18,8 @@ export const AuthChanged = "auth:changed";
  */
 export const DeeplinkJoin = "deeplink:join";
 
+/**
+ * Name of the custom event "update:changed".
+ */
+export const UpdateChanged = "update:changed";
+

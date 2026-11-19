@@ -50,6 +50,7 @@ VIAddVersionKey "ProductName"     "${INFO_PRODUCTNAME}"
 ManifestDPIAware true
 
 !include "MUI.nsh"
+!include "LogicLib.nsh"
 
 !define MUI_ICON "..\icon.ico"
 !define MUI_UNICON "..\icon.ico"
@@ -65,7 +66,9 @@ ManifestDPIAware true
 
 !insertmacro MUI_UNPAGE_INSTFILES # Uninstalling page
 
-!insertmacro MUI_LANGUAGE "English" # Set the Language of the installer
+# 第一个是默认语言；同时插入多种时 NSIS 按系统语言自动选择
+!insertmacro MUI_LANGUAGE "SimpChinese"
+!insertmacro MUI_LANGUAGE "English"
 
 ## The following two statements can be used to sign the installer and the uninstaller. The path to the binaries are provided in %1
 #!uninstfinalize 'signtool --file "%1"'
@@ -84,10 +87,58 @@ Function .onInit
    !insertmacro wails.checkArchitecture
 FunctionEnd
 
+# 文件被运行中的进程占用时以写方式打开会失败，用来判断客户端是否还在运行
+!macro IsLocked FILE RESULT
+    StrCpy ${RESULT} 0
+    ${If} ${FileExists} "${FILE}"
+        ClearErrors
+        FileOpen $R9 "${FILE}" a
+        ${If} ${Errors}
+            StrCpy ${RESULT} 1
+        ${Else}
+            FileClose $R9
+        ${EndIf}
+    ${EndIf}
+!macroend
+
+# 覆盖安装前等客户端和 easytier-core 退出。
+# 自动更新（静默）时客户端启动安装包后马上退出，最多等 30 秒；手动安装时等 2 秒后提示玩家先退出。
+Function WaitForAppExit
+    StrCpy $R1 0
+    ${If} ${Silent}
+        StrCpy $R3 60
+    ${Else}
+        StrCpy $R3 4
+    ${EndIf}
+    loop:
+        !insertmacro IsLocked "$INSTDIR\${PRODUCT_EXECUTABLE}" $R0
+        ${If} $R0 == 0
+            !insertmacro IsLocked "$INSTDIR\easytier\easytier-core.exe" $R0
+        ${EndIf}
+        ${If} $R0 == 0
+            Return
+        ${EndIf}
+        ${If} $R1 < $R3
+            IntOp $R1 $R1 + 1
+            Sleep 500
+            Goto loop
+        ${EndIf}
+        ${If} ${Silent}
+            Abort
+        ${EndIf}
+        MessageBox MB_RETRYCANCEL|MB_ICONEXCLAMATION "${INFO_PRODUCTNAME} 正在运行，请先关闭后点「重试」。" IDRETRY retry
+        Abort
+    retry:
+        StrCpy $R1 0
+        Goto loop
+FunctionEnd
+
 Section
     !insertmacro wails.setShellContext
 
     !insertmacro wails.webview2runtime
+
+    Call WaitForAppExit
 
     SetOutPath $INSTDIR
     
@@ -107,6 +158,14 @@ Section
     !insertmacro wails.associateCustomProtocols
     
     !insertmacro wails.writeUninstaller
+
+    # 客户端自动更新时带 /RELAUNCH（见 internal/update），装完重新打开客户端
+    ${GetParameters} $R0
+    ClearErrors
+    ${GetOptions} $R0 "/RELAUNCH" $R1
+    ${IfNot} ${Errors}
+        Exec '"$INSTDIR\${PRODUCT_EXECUTABLE}"'
+    ${EndIf}
 SectionEnd
 
 Section "uninstall" 

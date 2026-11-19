@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from "react";
+import { type ReactNode, useCallback, useEffect, useRef, useState } from "react";
 import { Events } from "@wailsio/runtime";
 import { AuthService, RoomService } from "../bindings/arkfgf.com/link";
 import type { AuthState } from "../bindings/arkfgf.com/link/models";
@@ -8,6 +8,7 @@ import { AuthChanged, DeeplinkJoin } from "../bindings/events";
 import { RoomDetailPane } from "./RoomDetail";
 import { errText, mapName } from "./format";
 import { isActive, LockIcon, phaseLabel, phaseTone, SteamIcon, type LoginProps } from "./shared";
+import { UpdateBadge, UpdateDialog, useUpdate } from "./Update";
 
 const idleStatus: Status = {
   phase: Phase.PhaseIdle,
@@ -87,10 +88,14 @@ export default function App() {
   };
 
   const loginProps = { auth, loggingIn, loginError, login, cancelLogin };
+  const update = useUpdate();
+  const [updateOpen, setUpdateOpen] = useState(false);
 
   return (
     <div className="app">
-      <Header {...loginProps} logout={logout} status={status} onOpenRoom={setSelected} />
+      <Header {...loginProps} logout={logout} status={status} onOpenRoom={setSelected}>
+        <UpdateBadge state={update} onOpen={() => setUpdateOpen(true)} />
+      </Header>
       <div className="body">
         <RoomListPane selected={selected} onSelect={setSelected} activeRoom={isActive(status) ? status.room_id : 0} />
         <main className="detail">
@@ -108,12 +113,13 @@ export default function App() {
           )}
         </main>
       </div>
+      {updateOpen && update && <UpdateDialog state={update} connected={isActive(status)} onClose={() => setUpdateOpen(false)} />}
     </div>
   );
 }
 
-function Header(props: LoginProps & { logout: () => void; status: Status; onOpenRoom: (id: number) => void }) {
-  const { auth, loggingIn, login, cancelLogin, logout, status, onOpenRoom } = props;
+function Header(props: LoginProps & { logout: () => void; status: Status; onOpenRoom: (id: number) => void; children?: ReactNode }) {
+  const { auth, loggingIn, login, cancelLogin, logout, status, onOpenRoom, children } = props;
   const [menu, setMenu] = useState(false);
   return (
     <header className="topbar">
@@ -130,6 +136,7 @@ function Header(props: LoginProps & { logout: () => void; status: Status; onOpen
         </button>
       )}
       <div className="spacer" />
+      {children}
       {auth === null ? null : auth.logged_in ? (
         <div className="user" onMouseLeave={() => setMenu(false)}>
           <button className="user-chip" onClick={() => setMenu(!menu)}>

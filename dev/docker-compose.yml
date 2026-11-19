@@ -1,5 +1,5 @@
 # 本地联调环境：公共节点（模拟 arkfgf.com）+ 服主节点（模拟 Commander）。
-# 参数与 ../docs/p2p-link.md 的公共节点、服主节点一致（公共节点端口映射到 127.0.0.1:21010）。用法见 README「本地联调」。
+# 参数与主仓库 docs/p2p-link.md 的公共节点、服主节点一致（公共节点端口映射到 127.0.0.1:21010）。用法见 README「本地联调」。
 name: arkserverlink-dev
 
 x-easytier: &easytier

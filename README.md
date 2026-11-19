@@ -11,22 +11,28 @@
 
 流量只走 P2P 直连，不经任何中继；打洞失败的网络连不上，客户端会明确提示。
 
+**下载**：[arkfgf.com/download](https://arkfgf.com/download)（可选择 GitHub 加速线路）或 [GitHub Releases](https://github.com/TBro1998/ArkServerLink/releases)。安装版会自动检查并安装新版本。
+
 ## 架构
 
-三方（网站、服主 Commander、玩家客户端）的接口和 EasyTier 组网参数约定在 [`../docs/p2p-link.md`](../docs/p2p-link.md)，改动前先读它。
+本仓库是 [ArkServerCommander](https://github.com/TBro1998/ArkServerCommander) 的子模块（`ArkServerCommander/ArkServerLink`）。三方（网站、服主 Commander、玩家客户端）的接口和 EasyTier 组网参数约定在主仓库（未公开）的 `docs/p2p-link.md`，改动前先读它。
 
 ```
 main.go                 Wails 应用、单实例、arkfgf-link:// 链接处理、事件注册
 authservice.go          AuthService：Status / Login / CancelLogin / Logout（暴露给前端）
 roomservice.go          RoomService：List / Get / Join / Leave / Status / Logs / TakePendingJoin
-internal/arkfgf         网站 /api/v1 客户端（房间列表、详情、加入、/me），错误带 code、中文说明、Retry-After
+updateservice.go        UpdateService：State / Check / SetMirror / Install / CancelInstall / OpenDownloadPage
+internal/arkfgf         网站 /api/v1 客户端（房间列表、详情、加入、/me、联机助手版本），错误带 code、中文说明、Retry-After
 internal/auth           Steam 回环登录（127.0.0.1 随机端口 + state 校验）、令牌 DPAPI 加密保存
 internal/session        加入流程：申请凭证（503 自动重试）→ 选本机端口 → 启动 easytier → 监视直连状态
 internal/easytier       easytier-core 子进程（参数、凭证走环境变量、作业对象保证随客户端退出）
 internal/deeplink       arkfgf-link://join/<id> 解析
-frontend/               React 界面（房间列表、详情、连接状态、日志）
+internal/update         自动更新：版本比较、下载线路测速、下载并校验 sha256、启动安装包
+frontend/               React 界面（房间列表、详情、连接状态、日志、更新对话框）
 dev/                    本地联调：docker-compose（公共节点 + 服主节点）、udpecho、fakeowner
 scripts/fetch-easytier  下载固定版本 EasyTier（v2.6.4，校验 sha256）
+scripts/set-version     发布时按 tag 改写各处版本号
+.github/workflows       release.yml：推送 v* tag 自动构建并发布 Release
 ```
 
 要点：
@@ -70,7 +76,7 @@ wails3 task devenv:down
 三个终端：
 
 ```sh
-wails3 task e2e:web      # 网站后端（../web/backend）跑在 127.0.0.1:8080，LINK_PEERS=tcp://127.0.0.1:21010，LINK_RPC 为空
+wails3 task e2e:web      # 网站后端（主仓库 web/backend，需按主仓库目录结构检出）跑在 127.0.0.1:8080，LINK_PEERS=tcp://127.0.0.1:21010，LINK_RPC 为空
 wails3 task e2e:owner    # 启动 pub，fakeowner 登记房间、启动 srv、心跳；打印 arkfgf-link://join/<id>
 wails3 task e2e:client   # 构建并以 ARKFGF_API=http://127.0.0.1:8080/api/v1 运行客户端
 ```
@@ -89,4 +95,34 @@ wails3 package               # NSIS 安装包 bin/arkserverlink-amd64-installer.
 
 - 安装包把 `bin/easytier/` 下的 `easytier-core.exe`、`easytier-cli.exe`、`Packet.dll` 装到程序旁的 `easytier\`
 - 安装包注册 `arkfgf-link` 协议（来自 `build/config.yml` 的 `protocols`，生成到 `build/windows/nsis/wails_tools.nsh`）。改了 `build/config.yml` 的 `info` 或 `protocols` 后执行 `wails3 task common:update:build-assets` 重新生成（不会覆盖 `project.nsi`）
-- 版本号同时改 `build/config.yml` 的 `info.version` 和 `main.go` 的 `version`
+- `wails3 package` 需要 `makensis`（[NSIS](https://nsis.sourceforge.io/)）在 PATH 里。脚本按 UTF-8 读取（Taskfile 传了 `-INPUTCHARSET UTF8`，否则中文在 GBK / cp1252 系统上会乱码或报错）
+- 覆盖安装前安装包会等客户端和 easytier-core 退出：静默安装（`/S`）最多等 30 秒，手动安装时提示玩家先关闭客户端。带 `/RELAUNCH` 时装完重新打开客户端
+- 本地构建显示的是源码里的版本号；发布时以 tag 为准（见下文），不用手动改
+
+## 发布
+
+推送 `v*` 附注 tag，GitHub Actions（[release.yml](.github/workflows/release.yml)）在 Windows 上构建、测试并发布 Release：
+
+```sh
+git tag -a v0.2.0 -m "v0.2.0" -m "## 更新内容
+- ……"
+git push origin v0.2.0
+```
+
+- `go run ./scripts/set-version <tag>` 按 tag 改写 `main.go`、`build/config.yml`、`build/windows/info.json`、`wails_tools.nsh` 里的版本号（Windows 版本资源只取数字部分）
+- 发布的文件名是客户端和下载页识别的约定（`update.AssetKind`）：`ArkServerLink-<版本>-windows-x64-setup.exe`（安装包）、`ArkServerLink-<版本>-windows-x64-portable.zip`（便携版）、`SHA256SUMS.txt`
+- tag 正文会写进 Release 说明，客户端的更新对话框和网站下载页都会显示
+- 带 `-` 的 tag（如 `v0.2.0-beta.1`）发布为预发布版：下载页可以切换下载，客户端不会自动更新到它
+
+## 自动更新
+
+- 启动 5 秒后检查一次，之后每 6 小时一次。版本信息来自网站 `GET /api/v1/link/client/releases`（网站缓存 GitHub Release，并给出加速站列表）；网站不可用时直接查 GitHub API
+- 有新的正式版时顶栏显示「新版本 vX」；没有时顶栏显示当前版本号，点击可手动检查
+- 更新对话框里可以选择下载线路：自动（默认）、GitHub 直连或某个加速站，选择保存在 `%AppData%\ArkServerLink\update.json`
+- 自动模式先向每条线路请求 256 KB 测速，按速度依次尝试；某条线路 20 秒没有数据、返回错误或 sha256 不对就换下一条。指定线路时它排第一，其余作为备用
+- 下载到 `%TEMP%\ArkServerLink-update`，校验 sha256（Release 文件的 digest）后以 `/S /RELAUNCH /D=<安装目录>` 启动安装包，客户端随即退出，装完自动重新打开
+- 只有安装版（程序旁有 `uninstall.exe`）能自动安装；便携版和开发构建只提示去官网下载
+
+## 许可
+
+[Apache License 2.0](LICENSE)

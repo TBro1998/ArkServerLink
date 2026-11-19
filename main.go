@@ -15,18 +15,21 @@ import (
 //go:embed all:frontend/dist
 var assets embed.FS
 
-// version 与 build/config.yml 的 info.version 保持一致，出现在 User-Agent 里。
+// version 与 build/config.yml 的 info.version 保持一致，出现在 User-Agent 里，也用于检查更新。
+// 发布时由 scripts/set-version 按 tag 改写（见 .github/workflows/release.yml）。
 const version = "0.1.0"
 
 // 发给前端的事件。
 const (
-	EventAuthChanged  = "auth:changed"  // 登录状态变化（登录、退出、令牌失效）
-	EventDeepLinkJoin = "deeplink:join" // 通过 arkfgf-link://join/<id> 请求加入房间
+	EventAuthChanged   = "auth:changed"   // 登录状态变化（登录、退出、令牌失效）
+	EventDeepLinkJoin  = "deeplink:join"  // 通过 arkfgf-link://join/<id> 请求加入房间
+	EventUpdateChanged = "update:changed" // 自动更新状态变化（检查结果、下载进度）
 )
 
 func init() {
 	application.RegisterEvent[AuthState](EventAuthChanged)
 	application.RegisterEvent[int64](EventDeepLinkJoin)
+	application.RegisterEvent[UpdateState](EventUpdateChanged)
 }
 
 var mainWindow *application.WebviewWindow
@@ -50,6 +53,7 @@ func main() {
 		authSvc.store = auth.NewStore(os.DevNull)
 	}
 	roomSvc := &RoomService{api: api, auth: authSvc}
+	updateSvc := newUpdateService(api, version)
 
 	// 首次启动就是被链接唤起的（Windows 上链接是第一个参数）
 	launchID, _ := deeplink.FindJoin(os.Args[1:])
@@ -61,6 +65,7 @@ func main() {
 		Services: []application.Service{
 			application.NewService(authSvc),
 			application.NewService(roomSvc),
+			application.NewService(updateSvc),
 		},
 		Assets: application.AssetOptions{
 			Handler: application.AssetFileServerFS(assets),

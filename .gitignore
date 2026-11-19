@@ -4,3 +4,4 @@ bin
 frontend/dist
 frontend/node_modules
 dev/bin
+build/windows/nsis/MicrosoftEdgeWebview2Setup.exe

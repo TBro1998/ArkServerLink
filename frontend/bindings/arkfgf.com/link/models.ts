@@ -17,3 +17,42 @@ export interface AuthState {
      */
     "message": string;
 }
+
+/**
+ * UpdateState 是自动更新的状态，变化时通过 update:changed 事件推给前端。
+ */
+export interface UpdateState {
+    "current": string;
+    "phase": string;
+    "latest": arkfgf$0.ClientRelease | null;
+
+    /**
+     * Latest 比当前版本新
+     */
+    "available": boolean;
+
+    /**
+     * 安装版可以自动安装；便携版和开发构建只能去官网下载
+     */
+    "can_auto": boolean;
+    "mirrors": arkfgf$0.Mirror[] | null;
+
+    /**
+     * 选择的线路，见 update.Prefs
+     */
+    "mirror": string;
+
+    /**
+     * 正在使用的线路名称
+     */
+    "source": string;
+    "done": number;
+    "total": number;
+    "error": string;
+    "checked_at": string;
+
+    /**
+     * DownloadPage 是官网下载页
+     */
+    "download_page": string;
+}

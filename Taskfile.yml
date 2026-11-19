@@ -105,8 +105,8 @@ tasks:
   # 完整端到端（见 README「端到端联调」）：三个终端分别运行 e2e:web、e2e:owner、e2e:client
 
   e2e:web:
-    summary: 在本机 8080 端口运行网站后端（../web/backend），公共节点指向 Docker 里的 pub
-    dir: ../web/backend
+    summary: 在本机 8080 端口运行网站后端（主仓库的 web/backend），公共节点指向 Docker 里的 pub
+    dir: ../../web/backend
     cmds:
       - go run .
     env:
