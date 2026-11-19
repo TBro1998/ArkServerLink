@@ -18,6 +18,14 @@ import * as arkfgf$0 from "./internal/arkfgf/models.js";
 import * as session$0 from "./internal/session/models.js";
 
 /**
+ * EnterGame 让 Steam 启动 ARK 并直接连进当前房间（等同游戏内控制台的 open 命令）。
+ * Steam 只接受游戏端口的地址。
+ */
+export function EnterGame(): $CancellablePromise<void> {
+    return $Call.ByID(3584857894);
+}
+
+/**
  * Get 返回房间详情。
  */
 export function Get(id: number): $CancellablePromise<arkfgf$0.RoomDetail | null> {

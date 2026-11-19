@@ -135,7 +135,7 @@ export function RoomDetailPane(props: Props) {
         ) : (
           <div className="join-row">
             <p className="muted">
-              {detail.password ? "这台服务器设有密码，进服时需要输入服主提供的密码。" : "加入后会在本机开一个端口，游戏里用控制台命令进服。"}
+              {detail.password ? "这台服务器设有密码，进服时需要输入服主提供的密码。" : "加入后点「进入游戏」即可直接进服。"}
             </p>
             <button className="primary big" onClick={() => (busyElsewhere ? setConfirmSwitch(true) : join())}>
               {busyElsewhere ? "切换到这个房间" : "加入"}
@@ -236,14 +236,29 @@ function LoginPrompt({ autoJoin, loggingIn, loginError, login, cancelLogin }: Pr
 
 function ConnectionCard({ status, onRetry, login, loggingIn }: Props & { onRetry: () => void }) {
   const [copied, setCopied] = useState(false);
+  const [entering, setEntering] = useState(false);
+  const [enterError, setEnterError] = useState("");
   const tone = phaseTone(status.phase);
   const failed = status.phase === Phase.PhaseError;
   const showCommand = !failed && status.local_port > 0;
+  const connected = status.phase === Phase.PhaseConnected;
 
   const copy = async () => {
     await Clipboard.SetText(status.command);
     setCopied(true);
     setTimeout(() => setCopied(false), 1500);
+  };
+
+  const enter = async () => {
+    setEnterError("");
+    setEntering(true);
+    try {
+      await RoomService.EnterGame();
+    } catch (e) {
+      setEnterError(errText(e));
+    } finally {
+      setEntering(false);
+    }
   };
 
   return (
@@ -284,6 +299,15 @@ function ConnectionCard({ status, onRetry, login, loggingIn }: Props & { onRetry
 
       {showCommand && (
         <>
+          {connected && (
+            <div className="enter-row">
+              <button className="primary" onClick={enter} disabled={entering}>
+                {entering ? "正在启动 ARK…" : "进入游戏"}
+              </button>
+              <span className="muted small-text">用 Steam 启动 ARK 并直接连进来，第一次启动游戏要等加载</span>
+            </div>
+          )}
+          {enterError && <p className="bad small-text">{enterError}</p>}
           <div className="command">
             <code>{status.command}</code>
             <button className={copied ? "ok small" : "primary small"} onClick={copy}>
@@ -291,9 +315,9 @@ function ConnectionCard({ status, onRetry, login, loggingIn }: Props & { onRetry
             </button>
           </div>
           <p className="muted small-text">
-            {status.phase === Phase.PhaseConnected
-              ? "打开 ARK，在主菜单或游戏里按 Tab 打开控制台，粘贴上面的命令回车即可进服。进服期间请保持助手运行。"
-              : "显示「已直连」后，在游戏控制台（Tab）里输入上面的命令进服。"}
+            {connected
+              ? "「进入游戏」会经 Steam 启动 ARK 并自动进服。ARK 已经开着时 Steam 收不到进服参数，按钮会把命令复制到剪贴板，在游戏里按 Tab 打开控制台粘贴回车即可。进服期间请保持助手运行。"
+              : "显示「已直连」后，点「进入游戏」即可进服。"}
           </p>
         </>
       )}

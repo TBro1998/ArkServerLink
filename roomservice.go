@@ -2,11 +2,14 @@ package main
 
 import (
 	"context"
+	"errors"
+	"fmt"
 	"sync"
 
 	"arkfgf.com/link/internal/arkfgf"
 	"arkfgf.com/link/internal/easytier"
 	"arkfgf.com/link/internal/session"
+	"arkfgf.com/link/internal/steam"
 	"github.com/wailsapp/wails/v3/pkg/application"
 )
 
@@ -101,4 +104,28 @@ func (s *RoomService) requestJoin(id int64) {
 	if app := application.Get(); app != nil {
 		app.Event.Emit(EventDeepLinkJoin, id)
 	}
+}
+
+// enterMu 串行化 EnterGame，避免连点重复拉起一个游戏进程。
+var enterMu sync.Mutex
+
+// EnterGame 让 Steam 启动 ARK 并直接连进当前房间（等同游戏内控制台的 open 命令）。
+// Steam 只接受游戏端口的地址。
+func (s *RoomService) EnterGame() error {
+	st := s.manager.Status()
+	if st.Phase != session.PhaseConnected || st.LocalPort <= 0 {
+		return errors.New("还没有和服务器直连，暂时无法进服")
+	}
+	enterMu.Lock()
+	defer enterMu.Unlock()
+	// 游戏已经开着时 Steam 会忽略连接参数，把命令放进剪贴板，让玩家自己粘贴
+	if steam.ArkRunning() {
+		application.Get().Clipboard.SetText(st.Command)
+		return errors.New("ARK 已经在运行，Steam 没法把进服参数交给它。进服命令已经复制，在游戏里按 Tab 打开控制台粘贴回车即可。")
+	}
+	addr := fmt.Sprintf("127.0.0.1:%d", st.LocalPort)
+	if err := application.Get().Browser.OpenURL(steam.ConnectURL(addr)); err != nil {
+		return fmt.Errorf("无法启动 Steam: %w", err)
+	}
+	return nil
 }

@@ -245,6 +245,9 @@ button.big { padding: 11px 26px; font-size: 15px; }
   animation: spin 0.8s linear infinite; vertical-align: -2px;
 }
 
+.enter-row { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; }
+.enter-row button { padding: 10px 22px; font-size: 15px; }
+
 .command {
   display: flex; align-items: center; justify-content: space-between; gap: 12px;
   padding: 10px 10px 10px 16px; border-radius: 8px; background: var(--bg); border: 1px solid var(--line-2);
