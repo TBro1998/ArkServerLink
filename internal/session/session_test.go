@@ -71,10 +71,92 @@ func TestPickPortsReal(t *testing.T) {
 	}
 }
 
+// 多台服务器：各自优先用服务器的端口；已分给前面服务器的端口不会再分出去
+func TestPickAllPorts(t *testing.T) {
+	all := func(int) bool { return true }
+	ps, err := pickAllPorts([]ServerPorts{{Game: 7777, Query: 27015}, {Game: 7779, Query: 27017}}, all, nil)
+	if err != nil || len(ps) != 2 || ps[0] != (Ports{Game: 7777, Raw: 7778, Query: 27015}) || ps[1] != (Ports{Game: 7779, Raw: 7780, Query: 27017}) {
+		t.Fatalf("ps = %+v err = %v", ps, err)
+	}
+
+	// 第二台的游戏端口 7778 正好是第一台的 L+1，第二台的查询端口和第一台的相同：都要换成随机端口
+	randoms := []int{40000, 40002}
+	i := 0
+	random := func() (int, error) { i++; return randoms[i-1], nil }
+	ps, err = pickAllPorts([]ServerPorts{{Game: 7777, Query: 27015}, {Game: 7778, Query: 27015}}, all, random)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if ps[1] != (Ports{Game: 40000, Raw: 40001, Query: 40002}) {
+		t.Fatalf("ps = %+v", ps)
+	}
+	seen := map[int]bool{}
+	for _, p := range ps {
+		for _, port := range []int{p.Game, p.Raw, p.Query} {
+			if seen[port] {
+				t.Fatalf("端口 %d 重复: %+v", port, ps)
+			}
+			seen[port] = true
+		}
+	}
+
+	if _, err := pickAllPorts(nil, all, nil); err == nil {
+		t.Error("没有服务器时应报错")
+	}
+}
+
+func TestJoinMultipleServers(t *testing.T) {
+	r := &fakeRunner{}
+	m := newTestManager(t, func(w http.ResponseWriter, _ *http.Request) { w.Write([]byte(joinBodyMulti("集群"))) }, r, nil)
+	if err := m.Join(12, ""); err != nil {
+		t.Fatal(err)
+	}
+	st := waitPhase(t, m, PhaseConnecting)
+	if len(st.Servers) != 2 {
+		t.Fatalf("st = %+v", st)
+	}
+	a, b := st.Servers[0], st.Servers[1]
+	if a.Key != "1" || a.Name != "集群 A" || a.Command != "open 127.0.0.1:7777" || a.QueryPort != 27015 {
+		t.Errorf("server a = %+v", a)
+	}
+	if b.Key != "2" || b.Map != "Ragnarok" || b.Command != "open 127.0.0.1:7779" || b.RawPort != 7780 {
+		t.Errorf("server b = %+v", b)
+	}
+	// 顶层字段是第一台的
+	if st.LocalPort != 7777 || st.Command != a.Command {
+		t.Errorf("st = %+v", st)
+	}
+	// 一个 easytier-core 进程，两台服务器各 3 条转发
+	if len(r.cfg.Forwards) != 6 {
+		t.Errorf("forwards = %+v", r.cfg.Forwards)
+	}
+
+	// 一个节点的直连就够了：所有服务器都在同一个虚拟 IP 上
+	r.set(func(f *fakeRunner) { f.peers = []easytier.Peer{{IPv4: "10.126.126.1", Cost: "p2p", LatencyMs: "10"}} })
+	waitPhase(t, m, PhaseConnected)
+}
+
+func TestJoinEmptyRoom(t *testing.T) {
+	r := &fakeRunner{}
+	m := newTestManager(t, func(w http.ResponseWriter, _ *http.Request) {
+		w.Write([]byte(`{"room":{"id":12,"name":"x"},"network_name":"ark-0123456789abcdef","credential":"` + testCred + `",
+			"credential_expires_at":1797600000,"peers":["tcp://127.0.0.1:21010"],"server_ip":"10.126.126.1","servers":[]}`))
+	}, r, nil)
+	m.Join(12, "")
+	st := waitPhase(t, m, PhaseError)
+	if st.ErrorCode != CodeLocal {
+		t.Errorf("st = %+v", st)
+	}
+	if running, _ := r.Running(); running {
+		t.Error("房间里没有服务器时不应启动 easytier")
+	}
+}
+
 func TestBuildConfig(t *testing.T) {
 	res := &arkfgf.JoinResult{NetworkName: "ark-1", Credential: testCred, Peers: []string{"tcp://et.arkfgf.com:11010"},
-		ServerIP: "10.126.126.1", GamePort: 7777, QueryPort: 27015}
-	cfg := BuildConfig(res, Ports{Game: 7787, Raw: 7788, Query: 27020})
+		ServerIP: "10.126.126.1",
+		Servers:  []arkfgf.JoinServer{{Key: "1", GamePort: 7777, QueryPort: 27015}, {Key: "2", GamePort: 7779, QueryPort: 27017}}}
+	cfg := BuildConfig(res, []Ports{{Game: 7787, Raw: 7788, Query: 27020}, {Game: 7789, Raw: 7790, Query: 27021}})
 	if err := cfg.Validate(); err != nil {
 		t.Fatal(err)
 	}
@@ -83,6 +165,9 @@ func TestBuildConfig(t *testing.T) {
 		"--port-forward udp://127.0.0.1:7787/10.126.126.1:7777",
 		"--port-forward udp://127.0.0.1:7788/10.126.126.1:7778",
 		"--port-forward udp://127.0.0.1:27020/10.126.126.1:27015",
+		"--port-forward udp://127.0.0.1:7789/10.126.126.1:7779",
+		"--port-forward udp://127.0.0.1:7790/10.126.126.1:7780",
+		"--port-forward udp://127.0.0.1:27021/10.126.126.1:27017",
 		"--network-name ark-1",
 	} {
 		if !strings.Contains(args, want) {
@@ -139,7 +224,16 @@ func (f *fakeRunner) set(fn func(f *fakeRunner)) {
 
 func joinBody(name string) string {
 	return `{"room":{"id":12,"name":"` + name + `"},"network_name":"ark-0123456789abcdef","credential":"` + testCred + `",
-		"credential_expires_at":1797600000,"peers":["tcp://127.0.0.1:21010"],"server_ip":"10.126.126.1","game_port":7777,"query_port":27015}`
+		"credential_expires_at":1797600000,"peers":["tcp://127.0.0.1:21010"],"server_ip":"10.126.126.1",
+		"servers":[{"key":"1","name":"` + name + `","map":"TheIsland","online":true,"game_port":7777,"query_port":27015}]}`
+}
+
+// joinBodyMulti 返回一个房间里有两台服务器的加入响应
+func joinBodyMulti(name string) string {
+	return `{"room":{"id":12,"name":"` + name + `"},"network_name":"ark-0123456789abcdef","credential":"` + testCred + `",
+		"credential_expires_at":1797600000,"peers":["tcp://127.0.0.1:21010"],"server_ip":"10.126.126.1",
+		"servers":[{"key":"1","name":"` + name + ` A","map":"TheIsland","online":true,"game_port":7777,"query_port":27015},
+		{"key":"2","name":"` + name + ` B","map":"Ragnarok","online":true,"game_port":7779,"query_port":27017}]}`
 }
 
 func newTestManager(t *testing.T, h http.HandlerFunc, r *fakeRunner, unauthorized func()) *Manager {
@@ -153,7 +247,13 @@ func newTestManager(t *testing.T, h http.HandlerFunc, r *fakeRunner, unauthorize
 		OnUnauthorized: unauthorized,
 		Grace:          300 * time.Millisecond,
 		Poll:           20 * time.Millisecond,
-		PickPorts:      func(g, q int) (Ports, error) { return Ports{Game: g, Raw: g + 1, Query: q}, nil },
+		PickPorts: func(s []ServerPorts) ([]Ports, error) {
+			out := make([]Ports, len(s))
+			for i, p := range s {
+				out[i] = Ports{Game: p.Game, Raw: p.Game + 1, Query: p.Query}
+			}
+			return out, nil
+		},
 	})
 	t.Cleanup(m.Leave)
 	return m

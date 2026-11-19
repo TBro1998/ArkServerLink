@@ -31,7 +31,7 @@ func TestIntegrationJoin(t *testing.T) {
 
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		fmt.Fprintf(w, `{"room":{"id":1,"name":"联调"},"network_name":%q,"credential":%q,"credential_expires_at":0,
-			"peers":[%q],"server_ip":"10.126.126.1","game_port":7777,"query_port":27015}`,
+			"peers":[%q],"server_ip":"10.126.126.1","servers":[{"key":"1","name":"联调","game_port":7777,"query_port":27015}]}`,
 			os.Getenv("ET_IT_NETWORK"), os.Getenv("ET_IT_CREDENTIAL"), peer)
 	}))
 	defer srv.Close()

@@ -49,19 +49,32 @@ const (
 	CodeLocal             = "local_error"
 )
 
+// ServerStatus 是房间里一台服务器在本机的转发情况：游戏里 open 127.0.0.1:<local_port>。
+type ServerStatus struct {
+	Key       string `json:"key"`
+	Name      string `json:"name"`
+	Map       string `json:"map"`
+	LocalPort int    `json:"local_port"`
+	RawPort   int    `json:"raw_port"`
+	QueryPort int    `json:"query_port"`
+	Command   string `json:"command"`
+}
+
 // Status 是给界面看的连接状态。
 type Status struct {
-	Phase     Phase   `json:"phase"`
-	RoomID    int64   `json:"room_id"`
-	RoomName  string  `json:"room_name"`
-	LocalPort int     `json:"local_port"` // 游戏里 open 127.0.0.1:<local_port>
-	RawPort   int     `json:"raw_port"`
-	QueryPort int     `json:"query_port"`
-	Command   string  `json:"command"`
-	LatencyMs float64 `json:"latency_ms"`
-	Message   string  `json:"message"`
-	ErrorCode string  `json:"error_code"`
-	RetryIn   int     `json:"retry_in"` // 等待重试的剩余秒数
+	Phase     Phase  `json:"phase"`
+	RoomID    int64  `json:"room_id"`
+	RoomName  string `json:"room_name"`
+	LocalPort int    `json:"local_port"` // 游戏里 open 127.0.0.1:<local_port>
+	RawPort   int    `json:"raw_port"`
+	QueryPort int    `json:"query_port"`
+	Command   string `json:"command"`
+	// 房间里每台服务器各一组本机端口；上面的 local_port 等是第一台服务器的（旧界面兼容）
+	Servers   []ServerStatus `json:"servers"`
+	LatencyMs float64        `json:"latency_ms"`
+	Message   string         `json:"message"`
+	ErrorCode string         `json:"error_code"`
+	RetryIn   int            `json:"retry_in"` // 等待重试的剩余秒数
 }
 
 // Options 配置 Manager。零值字段使用默认值。
@@ -74,7 +87,7 @@ type Options struct {
 	Grace          time.Duration // 启动后多久还没直连就判定为无法直连，默认 40 秒
 	Poll           time.Duration // 读取 peer 表的间隔，默认 2 秒
 	MaxRetries     int           // 凭证不足（503）时的自动重试次数，默认 3
-	PickPorts      func(gamePort, queryPort int) (Ports, error)
+	PickPorts      func(servers []ServerPorts) ([]Ports, error)
 }
 
 // Manager 管理当前的联机会话。
@@ -104,7 +117,7 @@ func NewManager(opt Options) *Manager {
 		opt.MaxRetries = 3
 	}
 	if opt.PickPorts == nil {
-		opt.PickPorts = PickPorts
+		opt.PickPorts = PickAllPorts
 	}
 	if opt.Token == nil {
 		opt.Token = func() string { return "" }
@@ -221,9 +234,21 @@ func (m *Manager) run(ctx context.Context, s *session, id int64) {
 		return
 	}
 
-	ports, err := m.opt.PickPorts(res.GamePort, res.QueryPort)
+	if len(res.Servers) == 0 {
+		m.fail(s, CodeLocal, "房间里没有可连接的服务器")
+		return
+	}
+	wanted := make([]ServerPorts, len(res.Servers))
+	for i, sv := range res.Servers {
+		wanted[i] = ServerPorts{Game: sv.GamePort, Query: sv.QueryPort}
+	}
+	ports, err := m.opt.PickPorts(wanted)
 	if err != nil {
 		m.fail(s, CodeLocal, "选择本机端口失败: "+err.Error())
+		return
+	}
+	if len(ports) != len(res.Servers) {
+		m.fail(s, CodeLocal, "选择本机端口失败: 端口数量和服务器数量不一致")
 		return
 	}
 	cfg := BuildConfig(res, ports)
@@ -238,8 +263,16 @@ func (m *Manager) run(ctx context.Context, s *session, id int64) {
 			st.RoomName = res.Room.Name
 		}
 		st.Phase = PhaseConnecting
-		st.LocalPort, st.RawPort, st.QueryPort = ports.Game, ports.Raw, ports.Query
-		st.Command = fmt.Sprintf("open 127.0.0.1:%d", ports.Game)
+		st.Servers = make([]ServerStatus, len(res.Servers))
+		for i, sv := range res.Servers {
+			st.Servers[i] = ServerStatus{
+				Key: sv.Key, Name: sv.Name, Map: sv.Map,
+				LocalPort: ports[i].Game, RawPort: ports[i].Raw, QueryPort: ports[i].Query,
+				Command: fmt.Sprintf("open 127.0.0.1:%d", ports[i].Game),
+			}
+		}
+		st.LocalPort, st.RawPort, st.QueryPort = ports[0].Game, ports[0].Raw, ports[0].Query
+		st.Command = st.Servers[0].Command
 		st.Message = "正在通过 P2P 打洞连接服务器…"
 	})
 	m.monitor(ctx, s, id, res.ServerIP)
@@ -374,14 +407,22 @@ func findServer(peers []easytier.Peer, serverIP string) *easytier.Peer {
 	return nil
 }
 
-// BuildConfig 按约定生成玩家节点参数：L→port、L+1→port+1、Q→query_port。
-func BuildConfig(res *arkfgf.JoinResult, p Ports) easytier.Config {
-	fw := []easytier.Forward{
-		{Proto: "udp", LocalPort: p.Game, RemoteIP: res.ServerIP, RemotePort: res.GamePort},
-		{Proto: "udp", LocalPort: p.Raw, RemoteIP: res.ServerIP, RemotePort: res.GamePort + 1},
-	}
-	if p.Query > 0 {
-		fw = append(fw, easytier.Forward{Proto: "udp", LocalPort: p.Query, RemoteIP: res.ServerIP, RemotePort: res.QueryPort})
+// BuildConfig 按约定生成玩家节点参数：房间里每台服务器各转发 L→port、L+1→port+1、Q→query_port，
+// ports[i] 对应 res.Servers[i]，全部合在同一个 easytier-core 进程里。
+func BuildConfig(res *arkfgf.JoinResult, ports []Ports) easytier.Config {
+	var fw []easytier.Forward
+	for i, sv := range res.Servers {
+		if i >= len(ports) {
+			break
+		}
+		p := ports[i]
+		fw = append(fw,
+			easytier.Forward{Proto: "udp", LocalPort: p.Game, RemoteIP: res.ServerIP, RemotePort: sv.GamePort},
+			easytier.Forward{Proto: "udp", LocalPort: p.Raw, RemoteIP: res.ServerIP, RemotePort: sv.GamePort + 1},
+		)
+		if p.Query > 0 {
+			fw = append(fw, easytier.Forward{Proto: "udp", LocalPort: p.Query, RemoteIP: res.ServerIP, RemotePort: sv.QueryPort})
+		}
 	}
 	return easytier.Config{
 		NetworkName: res.NetworkName,
