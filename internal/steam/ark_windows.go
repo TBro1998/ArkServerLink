@@ -4,10 +4,13 @@ package steam
 
 import (
 	"errors"
+	"fmt"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"regexp"
 	"strings"
+	"syscall"
 
 	"golang.org/x/sys/windows/registry"
 )
@@ -102,4 +105,21 @@ func parseLibraryPaths(vdf, skip string) []string {
 		}
 	}
 	return out
+}
+
+// ARKCommand 返回启动 ARK 并自动执行 `open 127.0.0.1:<port>` 的命令。
+//
+// 命令行必须原样是 `"<exe>" -ExecCmds="open 127.0.0.1:<port>"`：如果交给 exec.Command
+// 拼参数，Go 会按 Windows 规则转义成 `"-ExecCmds=\"open 127.0.0.1:<port>\""`，
+// 而 UE 解析命令行不认反斜杠转义，读到的命令是 `\"open`，游戏只会停在主菜单。
+// 所以用 SysProcAttr.CmdLine 直接给出整条命令行。
+func ARKCommand(exe string, port int) *exec.Cmd {
+	cmd := exec.Command(exe)
+	cmd.Dir = filepath.Dir(exe)
+	cmd.SysProcAttr = &syscall.SysProcAttr{CmdLine: arkCmdLine(exe, port)}
+	return cmd
+}
+
+func arkCmdLine(exe string, port int) string {
+	return fmt.Sprintf(`"%s" -ExecCmds="open 127.0.0.1:%d"`, exe, port)
 }

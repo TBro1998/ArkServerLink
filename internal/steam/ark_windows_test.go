@@ -151,3 +151,15 @@ func TestCandidateDirsWithoutVdf(t *testing.T) {
 		t.Fatalf("got %#v", got)
 	}
 }
+
+// ARK 只认 -ExecCmds="..." 这种原样的引号，不能让 Go 转义成 \"
+func TestArkCmdLine(t *testing.T) {
+	exe := `F:\Steam\steamapps\common\ARK\ShooterGame\Binaries\Win64\ShooterGame.exe`
+	want := `"` + exe + `" -ExecCmds="open 127.0.0.1:50145"`
+	if got := arkCmdLine(exe, 50145); got != want {
+		t.Fatalf("got  %s\nwant %s", got, want)
+	}
+	if got := ARKCommand(exe, 50145).SysProcAttr.CmdLine; got != want {
+		t.Fatalf("SysProcAttr.CmdLine = %s", got)
+	}
+}

@@ -4,8 +4,6 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"os/exec"
-	"path/filepath"
 	"sync"
 
 	"arkfgf.com/link/internal/arkfgf"
@@ -143,8 +141,7 @@ func (s *RoomService) EnterGame(key string) error {
 	if err != nil {
 		return err
 	}
-	cmd := exec.Command(exe, fmt.Sprintf(`-ExecCmds="open 127.0.0.1:%d"`, target.LocalPort))
-	cmd.Dir = filepath.Dir(exe)
+	cmd := steam.ARKCommand(exe, target.LocalPort)
 	if err := cmd.Start(); err != nil {
 		return fmt.Errorf("无法启动 ARK: %w", err)
 	}
