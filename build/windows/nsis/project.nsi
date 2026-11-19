@@ -76,15 +76,36 @@ ManifestDPIAware true
 
 Name "${INFO_PRODUCTNAME}"
 OutFile "..\..\..\bin\${INFO_PROJECTNAME}-${ARCH}-installer.exe" # Name of the installer's file.
+# 安装目录名不用中文产品名，避免中文路径
+!define INSTALL_DIRNAME "ArkServerLink"
 !if "${WAILS_INSTALL_SCOPE}" == "user"
-    InstallDir "$LOCALAPPDATA\Programs\${INFO_PRODUCTNAME}"
+    !define DEFAULT_INSTDIR "$LOCALAPPDATA\Programs\${INSTALL_DIRNAME}"
+    !define UNINST_ROOT HKCU
 !else
-    InstallDir "$PROGRAMFILES64\${INFO_COMPANYNAME}\${INFO_PRODUCTNAME}"
+    !define DEFAULT_INSTDIR "$PROGRAMFILES64\${INFO_COMPANYNAME}\${INSTALL_DIRNAME}"
+    !define UNINST_ROOT HKLM
 !endif
+InstallDir "${DEFAULT_INSTDIR}"
 ShowInstDetails show # This will always show the installation details.
 
 Function .onInit
-   !insertmacro wails.checkArchitecture
+    !insertmacro wails.checkArchitecture
+
+    # 已经安装过时沿用原来的目录（旧版本默认装在中文名目录下），覆盖安装不会装出两份。
+    # 命令行用 /D= 指定了目录（自动更新）时 $INSTDIR 不是默认值，不改。
+    ${If} "$INSTDIR" == "${DEFAULT_INSTDIR}"
+        SetRegView 64
+        ReadRegStr $R0 ${UNINST_ROOT} "${UNINST_KEY}" "UninstallString"
+        SetRegView lastused
+        # UninstallString 形如 "C:\...\uninstall.exe"（带引号）
+        ${If} $R0 != ""
+            StrCpy $R0 $R0 "" 1
+            StrCpy $R0 $R0 -15
+            ${If} ${FileExists} "$R0\uninstall.exe"
+                StrCpy $INSTDIR $R0
+            ${EndIf}
+        ${EndIf}
+    ${EndIf}
 FunctionEnd
 
 # 文件被运行中的进程占用时以写方式打开会失败，用来判断客户端是否还在运行
