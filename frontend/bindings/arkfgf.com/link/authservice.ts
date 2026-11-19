@@ -22,7 +22,7 @@ export function CancelLogin(): $CancellablePromise<void> {
 }
 
 /**
- * Login 打开浏览器走 Steam 登录，等待网站回调到本机（最多 5 分钟）。
+ * Login 打开 Steam 登录页（Steam 客户端或浏览器），等待网站回调到本机（最多 5 分钟）。
  */
 export function Login(): $CancellablePromise<$models.AuthState> {
     return $Call.ByID(655276660);

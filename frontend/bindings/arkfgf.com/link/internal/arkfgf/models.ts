@@ -84,6 +84,11 @@ export interface Room {
     "created_at": UnixTime;
     "country": string;
     "province": string;
+
+    /**
+     * 房间里的服务器（一个房间 = 一个 Commander，可以有多台）；上面的地图、人数、倍率等是汇总值
+     */
+    "servers": RoomServer[] | null;
 }
 
 /**
@@ -111,6 +116,11 @@ export interface RoomDetail {
     "created_at": UnixTime;
     "country": string;
     "province": string;
+
+    /**
+     * 房间里的服务器（一个房间 = 一个 Commander，可以有多台）；上面的地图、人数、倍率等是汇总值
+     */
+    "servers": RoomServer[] | null;
     "mod_list": Mod[] | null;
 }
 
@@ -123,6 +133,19 @@ export interface RoomList {
     "page": number;
     "pages": number;
     "stats": RoomStats | null;
+}
+
+/**
+ * RoomServer 是房间里的一台服务器（公开信息，不含端口）。
+ */
+export interface RoomServer {
+    "name": string;
+    "map": string;
+    "players": number;
+    "max_players": number;
+    "password": boolean;
+    "pvp": boolean;
+    "online": boolean;
 }
 
 /**

@@ -39,6 +39,19 @@ export enum Phase {
 };
 
 /**
+ * ServerStatus 是房间里一台服务器在本机的转发情况：游戏里 open 127.0.0.1:<local_port>。
+ */
+export interface ServerStatus {
+    "key": string;
+    "name": string;
+    "map": string;
+    "local_port": number;
+    "raw_port": number;
+    "query_port": number;
+    "command": string;
+}
+
+/**
  * Status 是给界面看的连接状态。
  */
 export interface Status {
@@ -53,6 +66,11 @@ export interface Status {
     "raw_port": number;
     "query_port": number;
     "command": string;
+
+    /**
+     * 房间里每台服务器各一组本机端口；上面的 local_port 等是第一台服务器的（旧界面兼容）
+     */
+    "servers": ServerStatus[] | null;
     "latency_ms": number;
     "message": string;
     "error_code": string;

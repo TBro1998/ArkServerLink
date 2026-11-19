@@ -2,11 +2,16 @@ package main
 
 import (
 	"context"
+	"errors"
+	"fmt"
+	"os/exec"
+	"path/filepath"
 	"sync"
 
 	"arkfgf.com/link/internal/arkfgf"
 	"arkfgf.com/link/internal/easytier"
 	"arkfgf.com/link/internal/session"
+	"arkfgf.com/link/internal/steam"
 	"github.com/wailsapp/wails/v3/pkg/application"
 )
 
@@ -101,4 +106,48 @@ func (s *RoomService) requestJoin(id int64) {
 	if app := application.Get(); app != nil {
 		app.Event.Emit(EventDeepLinkJoin, id)
 	}
+}
+
+// enterMu 串行化 EnterGame，避免连点重复拉起一个游戏进程。
+var enterMu sync.Mutex
+
+// EnterGame 直接启动本机的 ARK 客户端并连进当前房间。
+//
+// 用 -ExecCmds 让游戏启动后执行控制台的 open 命令，不经过 Steam 的启动器：
+// Steam 的 +connect / steam://run 走它的服务器查询流程，对 127.0.0.1 会报
+// "Unable to query server info for invite"，不会真的发出游戏报文（已实测）。
+func (s *RoomService) EnterGame(key string) error {
+	st := s.manager.Status()
+	if st.Phase != session.PhaseConnected {
+		return errors.New("还没有和服务器直连，暂时无法进服")
+	}
+	// 房间里可能有多台服务器，key 是 Commander 里的服务器 ID；留空时选第一台
+	var target *session.ServerStatus
+	for i := range st.Servers {
+		if key == "" || st.Servers[i].Key == key {
+			target = &st.Servers[i]
+			break
+		}
+	}
+	if target == nil || target.LocalPort <= 0 {
+		return errors.New("找不到这台服务器的本机端口")
+	}
+	enterMu.Lock()
+	defer enterMu.Unlock()
+	// 游戏已经开着时新进程会退出，把命令放进剪贴板让玩家自己粘贴
+	if steam.ArkRunning() {
+		application.Get().Clipboard.SetText(target.Command)
+		return errors.New("ARK 已经在运行，没法再启动一个。进服命令已经复制，在游戏里按 Tab 打开控制台粘贴回车即可。")
+	}
+	exe, err := steam.FindARK()
+	if err != nil {
+		return err
+	}
+	cmd := exec.Command(exe, fmt.Sprintf(`-ExecCmds="open 127.0.0.1:%d"`, target.LocalPort))
+	cmd.Dir = filepath.Dir(exe)
+	if err := cmd.Start(); err != nil {
+		return fmt.Errorf("无法启动 ARK: %w", err)
+	}
+	_ = cmd.Process.Release()
+	return nil
 }

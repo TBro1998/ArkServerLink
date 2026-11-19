@@ -18,6 +18,7 @@ const idleStatus: Status = {
   raw_port: 0,
   query_port: 0,
   command: "",
+  servers: [],
   latency_ms: 0,
   message: "",
   error_code: "",
@@ -297,7 +298,7 @@ function Welcome({ status, onOpenRoom }: { status: Status; onOpenRoom: (id: numb
           <b>加入</b>用 Steam 登录后点「加入」，等待显示「已直连」
         </li>
         <li>
-          <b>进服</b>在游戏里按 Tab 打开控制台，输入助手给出的 <code>open 127.0.0.1:…</code> 命令
+          <b>进服</b>点「进入游戏」，助手启动 ARK 并自动连进服务器
         </li>
       </ol>
       {isActive(status) && (

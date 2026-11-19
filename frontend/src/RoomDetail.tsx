@@ -135,7 +135,7 @@ export function RoomDetailPane(props: Props) {
         ) : (
           <div className="join-row">
             <p className="muted">
-              {detail.password ? "这台服务器设有密码，进服时需要输入服主提供的密码。" : "加入后会在本机开一个端口，游戏里用控制台命令进服。"}
+              {detail.password ? "这台服务器设有密码，进服时需要输入服主提供的密码。" : "加入后点「进入游戏」即可直接进服。"}
             </p>
             <button className="primary big" onClick={() => (busyElsewhere ? setConfirmSwitch(true) : join())}>
               {busyElsewhere ? "切换到这个房间" : "加入"}
@@ -144,6 +144,26 @@ export function RoomDetailPane(props: Props) {
         )}
         {joinError && <p className="bad small-text">{joinError}</p>}
       </section>
+
+      {(detail.servers?.length ?? 0) > 1 && (
+        <div className="room-servers">
+          <h3>房间里的服务器（{detail.servers!.length}）</h3>
+          <p className="muted small-text">加入一次就能连接这里的所有服务器。</p>
+          {detail.servers!.map((sv, i) => (
+            <div key={i} className="room-server">
+              <span className={`status-dot ${sv.online ? "ok" : "idle"}`} />
+              <span className="name">
+                {sv.password && <LockIcon />}
+                {sv.name}
+              </span>
+              <span className="muted small-text">
+                {mapName(sv.map)} · {sv.pvp ? "PvP" : "PvE"}
+              </span>
+              <span className="muted small-text">{sv.online ? `${sv.players}/${sv.max_players || "?"}` : "未运行"}</span>
+            </div>
+          ))}
+        </div>
+      )}
 
       <div className="facts">
         <Fact label="模式" value={detail.pvp ? "PvP" : "PvE"} />
@@ -235,15 +255,33 @@ function LoginPrompt({ autoJoin, loggingIn, loginError, login, cancelLogin }: Pr
 }
 
 function ConnectionCard({ status, onRetry, login, loggingIn }: Props & { onRetry: () => void }) {
-  const [copied, setCopied] = useState(false);
+  // 正在复制或进服的服务器（key）
+  const [copied, setCopied] = useState("");
+  const [entering, setEntering] = useState("");
+  const [enterError, setEnterError] = useState("");
   const tone = phaseTone(status.phase);
   const failed = status.phase === Phase.PhaseError;
-  const showCommand = !failed && status.local_port > 0;
+  const servers = status.servers ?? [];
+  const showCommand = !failed && servers.length > 0;
+  const connected = status.phase === Phase.PhaseConnected;
+  const multi = servers.length > 1;
 
-  const copy = async () => {
-    await Clipboard.SetText(status.command);
-    setCopied(true);
-    setTimeout(() => setCopied(false), 1500);
+  const copy = async (key: string, command: string) => {
+    await Clipboard.SetText(command);
+    setCopied(key);
+    setTimeout(() => setCopied((k) => (k === key ? "" : k)), 1500);
+  };
+
+  const enter = async (key: string) => {
+    setEnterError("");
+    setEntering(key);
+    try {
+      await RoomService.EnterGame(key);
+    } catch (e) {
+      setEnterError(errText(e));
+    } finally {
+      setEntering("");
+    }
   };
 
   return (
@@ -284,16 +322,35 @@ function ConnectionCard({ status, onRetry, login, loggingIn }: Props & { onRetry
 
       {showCommand && (
         <>
-          <div className="command">
-            <code>{status.command}</code>
-            <button className={copied ? "ok small" : "primary small"} onClick={copy}>
-              {copied ? "已复制" : "复制"}
-            </button>
-          </div>
+          {multi && <p className="muted small-text">这个房间有 {servers.length} 台服务器，都已经连好，选一台进入：</p>}
+          {servers.map((sv) => (
+            <div key={sv.key} className="server-entry">
+              {multi && (
+                <div className="server-entry-head">
+                  <b>{sv.name || `服务器 ${sv.key}`}</b>
+                  {sv.map && <span className="muted small-text">{mapName(sv.map)}</span>}
+                </div>
+              )}
+              <div className="command">
+                <code>{sv.command}</code>
+                <div className="btns">
+                  <button className={copied === sv.key ? "ok small" : "ghost small"} onClick={() => copy(sv.key, sv.command)}>
+                    {copied === sv.key ? "已复制" : "复制"}
+                  </button>
+                  {connected && (
+                    <button className="primary small" onClick={() => enter(sv.key)} disabled={entering !== ""}>
+                      {entering === sv.key ? "正在启动 ARK…" : "进入游戏"}
+                    </button>
+                  )}
+                </div>
+              </div>
+            </div>
+          ))}
+          {enterError && <p className="bad small-text">{enterError}</p>}
           <p className="muted small-text">
-            {status.phase === Phase.PhaseConnected
-              ? "打开 ARK，在主菜单或游戏里按 Tab 打开控制台，粘贴上面的命令回车即可进服。进服期间请保持助手运行。"
-              : "显示「已直连」后，在游戏控制台（Tab）里输入上面的命令进服。"}
+            {connected
+              ? "「进入游戏」会经 Steam 启动 ARK 并自动进服，第一次启动游戏要等加载。ARK 已经开着时 Steam 收不到进服参数，按钮会把命令复制到剪贴板，在游戏里按 Tab 打开控制台粘贴回车即可。进服期间请保持助手运行。"
+              : "显示「已直连」后，点「进入游戏」即可进服。"}
           </p>
         </>
       )}
