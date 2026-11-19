@@ -104,7 +104,8 @@ wails3 package               # NSIS 安装包 bin/arkserverlink-amd64-installer.
 推送 `v*` 附注 tag，GitHub Actions（[release.yml](.github/workflows/release.yml)）在 Windows 上构建、测试并发布 Release：
 
 ```sh
-git tag -a v0.2.0 -m "v0.2.0" -m "## 更新内容
+# --cleanup=whitespace：默认会把 # 开头的行当注释删掉，Markdown 标题就丢了
+git tag -a --cleanup=whitespace v0.2.0 -m "v0.2.0" -m "## 更新内容
 - ……"
 git push origin v0.2.0
 ```

@@ -2,7 +2,7 @@ name: Release
 
 # 推送 v* tag 时构建 Windows 安装包和便携版，发布到 GitHub Release。
 # 客户端的自动更新和 arkfgf.com/download 都从 Release 读取，文件名约定见 internal/update/github.go 的 AssetKind。
-# 更新说明写在附注 tag 的正文里：git tag -a v0.2.0 -m "概括" -m "Markdown 正文"
+# 更新说明写在附注 tag 的正文里：git tag -a --cleanup=whitespace v0.2.0 -m "v0.2.0" -m "Markdown 正文"（见 README「发布」）
 on:
   push:
     tags: ['v*']
