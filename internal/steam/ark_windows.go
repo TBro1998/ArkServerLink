@@ -22,15 +22,24 @@ const arkRelPath = `steamapps\common\ARK\ShooterGame\Binaries\Win64\ShooterGame.
 // 反过来 +connect / steam://run 走的是 Steam 的查询流程，对 127.0.0.1 会报
 // "Unable to query server info for invite"，一个包都不会发。
 func FindARK() (string, error) {
-	steamPath, err := steamPath()
+	dir, err := steamPath()
 	if err != nil {
 		return "", err
 	}
-	libs := []string{steamPath}
-	libs = append(libs, libraryPaths(steamPath)...)
-	for _, dir := range libs {
+	return findIn(candidateDirs(dir), os.Stat)
+}
+
+// candidateDirs 是可能装有 ARK 的 Steam 库目录：Steam 本体目录在前，然后是
+// libraryfolders.vdf 里登记的其他库。
+func candidateDirs(steamPath string) []string {
+	return append([]string{steamPath}, libraryPaths(steamPath)...)
+}
+
+// findIn 按顺序在各库目录里找 ARK 客户端主程序。stat 可注入，便于测试。
+func findIn(dirs []string, stat func(string) (os.FileInfo, error)) (string, error) {
+	for _, dir := range dirs {
 		p := filepath.Join(dir, arkRelPath)
-		if fi, err := os.Stat(p); err == nil && !fi.IsDir() {
+		if fi, err := stat(p); err == nil && !fi.IsDir() {
 			return p, nil
 		}
 	}
@@ -63,15 +72,32 @@ func steamPath() (string, error) {
 var libraryPathRe = regexp.MustCompile(`"path"\s+"([^"]+)"`)
 
 // libraryPaths 从 libraryfolders.vdf 里读出其他 Steam 库目录（游戏不一定装在 Steam 本体目录里）。
+// 读不到时返回空，不影响调用方继续用 Steam 本体目录找。
 func libraryPaths(steamPath string) []string {
 	data, err := os.ReadFile(filepath.Join(steamPath, "steamapps", "libraryfolders.vdf"))
 	if err != nil {
 		return nil
 	}
+	return parseLibraryPaths(string(data), steamPath)
+}
+
+// parseLibraryPaths 解析 libraryfolders.vdf 里的 "path" 字段。vdf 里的反斜杠是转义的
+// （`"F:\\Steam"`），Steam 本体所在的目录跳过（调用方已经找过）。
+func parseLibraryPaths(vdf, skip string) []string {
 	var out []string
-	for _, m := range libraryPathRe.FindAllStringSubmatch(string(data), -1) {
-		p := strings.ReplaceAll(m[1], `\`, `\`)
-		if p != steamPath {
+	for _, m := range libraryPathRe.FindAllStringSubmatch(vdf, -1) {
+		p := strings.ReplaceAll(m[1], `\\`, `\`)
+		if p == "" || strings.EqualFold(p, skip) {
+			continue
+		}
+		dup := false
+		for _, e := range out {
+			if strings.EqualFold(e, p) {
+				dup = true
+				break
+			}
+		}
+		if !dup {
 			out = append(out, p)
 		}
 	}
