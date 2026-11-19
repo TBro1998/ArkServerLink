@@ -8,6 +8,7 @@ import (
 
 	"arkfgf.com/link/internal/arkfgf"
 	"arkfgf.com/link/internal/auth"
+	"arkfgf.com/link/internal/steam"
 	"github.com/wailsapp/wails/v3/pkg/application"
 )
 
@@ -84,7 +85,7 @@ func (s *AuthService) Status(ctx context.Context) AuthState {
 	}
 }
 
-// Login 打开浏览器走 Steam 登录，等待网站回调到本机（最多 5 分钟）。
+// Login 打开 Steam 登录页（Steam 客户端或浏览器），等待网站回调到本机（最多 5 分钟）。
 func (s *AuthService) Login(ctx context.Context) (AuthState, error) {
 	s.loginMu.Lock()
 	if s.loginCancel != nil {
@@ -95,7 +96,7 @@ func (s *AuthService) Login(ctx context.Context) (AuthState, error) {
 	s.loginMu.Unlock()
 	defer cancel()
 
-	tok, err := auth.LoopbackLogin(ctx, s.api.SteamLoginURL, s.openURL)
+	tok, err := auth.LoopbackLogin(ctx, s.api.SteamLoginURL, s.openLoginURL)
 	if err != nil {
 		return AuthState{}, err
 	}
@@ -168,4 +169,23 @@ func (s *AuthService) emit(st AuthState) {
 
 func (s *AuthService) openURL(url string) error {
 	return application.Get().Browser.OpenURL(url)
+}
+
+// openLoginURL 打开登录页。Steam 客户端开着并已登录时，直接在 Steam 窗口里打开 OpenID 登录页：
+// Steam 自带的浏览器已经登录了 Steam 社区，玩家只要点「登录」，不用在浏览器里再输一次账号密码。
+// 不能直接把网站地址交给 Steam（Steam 会转给系统浏览器），所以先向网站要到 steamcommunity.com 的地址。
+// 任何一步失败都退回系统浏览器。
+func (s *AuthService) openLoginURL(loginURL string) error {
+	if steam.Running() {
+		ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+		openid, err := s.api.SteamOpenIDURL(ctx, loginURL)
+		cancel()
+		if err == nil {
+			if err = s.openURL(steam.OpenURL(openid)); err == nil {
+				return nil
+			}
+		}
+		application.Get().Logger.Warn("无法在 Steam 客户端里打开登录页，改用浏览器", "error", err)
+	}
+	return s.openURL(loginURL)
 }

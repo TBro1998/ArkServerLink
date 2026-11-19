@@ -106,6 +106,36 @@ func (c *Client) SteamLoginURL(clientPort int, state string) string {
 	return c.base + "/auth/steam/login?" + v.Encode()
 }
 
+// SteamOpenIDURL 请求网站登录入口 loginURL（SteamLoginURL 的返回值），不跟随跳转，
+// 返回网站要跳去的 Steam OpenID 登录页地址。用于在 Steam 客户端里直接打开登录页。
+// 只接受 https://steamcommunity.com/openid/ 下的地址，避免把别的页面交给 Steam 打开。
+func (c *Client) SteamOpenIDURL(ctx context.Context, loginURL string) (string, error) {
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, loginURL, nil)
+	if err != nil {
+		return "", err
+	}
+	req.Header.Set("User-Agent", c.userAgent)
+	hc := *c.http
+	hc.CheckRedirect = func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse }
+	resp, err := hc.Do(req)
+	if err != nil {
+		return "", fmt.Errorf("连不上 arkfgf.com: %w", err)
+	}
+	defer resp.Body.Close()
+	_, _ = io.Copy(io.Discard, io.LimitReader(resp.Body, maxBody))
+	if resp.StatusCode < 300 || resp.StatusCode > 399 {
+		return "", fmt.Errorf("登录入口返回 HTTP %d，没有跳转到 Steam", resp.StatusCode)
+	}
+	loc, err := resp.Location()
+	if err != nil {
+		return "", fmt.Errorf("登录入口没有给出跳转地址: %w", err)
+	}
+	if loc.Scheme != "https" || !strings.EqualFold(loc.Host, "steamcommunity.com") || !strings.HasPrefix(loc.Path, "/openid/") {
+		return "", fmt.Errorf("登录入口跳转到了意外的地址: %s", loc.Redacted())
+	}
+	return loc.String(), nil
+}
+
 func (c *Client) do(ctx context.Context, method, path, token string, out any) error {
 	req, err := http.NewRequestWithContext(ctx, method, c.base+path, nil)
 	if err != nil {

@@ -219,7 +219,7 @@ function LoginPrompt({ autoJoin, loggingIn, loginError, login, cancelLogin }: Pr
       {loggingIn ? (
         <div className="btns">
           <span className="muted">
-            <span className="spinner" /> 等待浏览器登录…
+            <span className="spinner" /> 等待在 Steam 窗口里确认登录…
           </span>
           <button className="ghost" onClick={cancelLogin}>
             取消

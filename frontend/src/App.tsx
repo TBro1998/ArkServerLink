@@ -152,7 +152,7 @@ function Header(props: LoginProps & { logout: () => void; status: Status; onOpen
         </div>
       ) : loggingIn ? (
         <div className="login-wait">
-          <span className="spinner" /> 请在浏览器里完成 Steam 登录…
+          <span className="spinner" /> 请在弹出的 Steam 窗口（或浏览器）里点「登录」…
           <button className="ghost small" onClick={cancelLogin}>
             取消
           </button>

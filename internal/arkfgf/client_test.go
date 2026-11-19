@@ -185,6 +185,45 @@ func TestSteamLoginURL(t *testing.T) {
 	}
 }
 
+func TestSteamOpenIDURL(t *testing.T) {
+	const openid = "https://steamcommunity.com/openid/login?openid.mode=checkid_setup&openid.return_to=https%3A%2F%2Farkfgf.com%2Fcb"
+	cases := []struct {
+		name     string
+		status   int
+		location string
+		wantErr  bool
+	}{
+		{"redirect to steam", http.StatusFound, openid, false},
+		{"not a redirect", http.StatusBadRequest, "", true},
+		{"other host", http.StatusFound, "https://evil.example/openid/login", true},
+		{"plain http", http.StatusFound, "http://steamcommunity.com/openid/login", true},
+		{"other path", http.StatusFound, "https://steamcommunity.com/market/", true},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			c := newTestServer(t, func(w http.ResponseWriter, r *http.Request) {
+				if r.URL.Path != "/api/v1/auth/steam/login" || r.URL.Query().Get("client_port") != "54321" {
+					t.Errorf("unexpected %s", r.URL)
+				}
+				if tc.location != "" {
+					w.Header().Set("Location", tc.location)
+				}
+				w.WriteHeader(tc.status)
+			})
+			got, err := c.SteamOpenIDURL(context.Background(), c.SteamLoginURL(54321, "abc_DEF-123"))
+			if tc.wantErr {
+				if err == nil {
+					t.Errorf("want error, got %s", got)
+				}
+				return
+			}
+			if err != nil || got != openid {
+				t.Errorf("got %q, %v", got, err)
+			}
+		})
+	}
+}
+
 func TestBaseURLFromEnv(t *testing.T) {
 	t.Setenv("ARKFGF_API", "")
 	if BaseURLFromEnv() != DefaultBaseURL {
