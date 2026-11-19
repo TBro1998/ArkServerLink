@@ -34,6 +34,8 @@ open 127.0.0.1:7777
 
 **只支持 Windows 10 / 11 64 位**，开源免费。
 
+**杀毒软件提示**：安装包还没有代码签名，Windows Defender 或 SmartScreen 可能误报或拦截。新发布的版本都附带 GitHub 的构建证明，可以用 GitHub CLI 验证文件确实来自本仓库的 CI 构建：`gh attestation verify 文件名 -R TBro1998/ArkServerLink`。也可以先用便携版。
+
 ---
 
 ## 下载
