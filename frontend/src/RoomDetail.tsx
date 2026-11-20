@@ -259,6 +259,7 @@ function ConnectionCard({ status, onRetry, login, loggingIn }: Props & { onRetry
   const [copied, setCopied] = useState("");
   const [entering, setEntering] = useState("");
   const [enterError, setEnterError] = useState("");
+  const [enterHint, setEnterHint] = useState("");
   const tone = phaseTone(status.phase);
   const failed = status.phase === Phase.PhaseError;
   const servers = status.servers ?? [];
@@ -274,9 +275,10 @@ function ConnectionCard({ status, onRetry, login, loggingIn }: Props & { onRetry
 
   const enter = async (key: string) => {
     setEnterError("");
+    setEnterHint("");
     setEntering(key);
     try {
-      await RoomService.EnterGame(key);
+      setEnterHint(await RoomService.EnterGame(key));
     } catch (e) {
       setEnterError(errText(e));
     } finally {
@@ -339,17 +341,18 @@ function ConnectionCard({ status, onRetry, login, loggingIn }: Props & { onRetry
                   </button>
                   {connected && (
                     <button className="primary small" onClick={() => enter(sv.key)} disabled={entering !== ""}>
-                      {entering === sv.key ? "正在打开 Steam…" : "进入游戏"}
+                      {entering === sv.key ? "正在启动 ARK…" : "进入游戏"}
                     </button>
                   )}
                 </div>
               </div>
             </div>
           ))}
+          {enterHint && <p className="ok-text small-text">{enterHint}</p>}
           {enterError && <p className="bad small-text">{enterError}</p>}
           <p className="muted small-text">
             {connected
-              ? "「进入游戏」让 Steam 连接服务器，ARK 没开时会先启动游戏，第一次启动要等加载。没有反应时，在 Steam 的「查看 → 游戏服务器 → 收藏」里添加上面的地址，再选中它点「连接」。进服期间请保持助手运行。"
+              ? "「进入游戏」会把服务器加入 Steam 收藏，并通过 Steam 启动 ARK。进入主菜单后点「加入方舟」，切到「收藏」，选这台服务器加入。也可以自己在 Steam 的「查看 → 游戏服务器 → 收藏」里添加上面的地址。进服期间请保持助手运行。"
               : "显示「已直连」后，点「进入游戏」即可进服。"}
           </p>
         </>

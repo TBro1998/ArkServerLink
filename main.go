@@ -8,6 +8,7 @@ import (
 	"arkfgf.com/link/internal/arkfgf"
 	"arkfgf.com/link/internal/auth"
 	"arkfgf.com/link/internal/deeplink"
+	"arkfgf.com/link/internal/steam"
 	"github.com/wailsapp/wails/v3/pkg/application"
 	"github.com/wailsapp/wails/v3/pkg/events"
 )
@@ -44,6 +45,10 @@ func focusMainWindow() {
 }
 
 func main() {
+	// 一次性子进程：以 ARK 的身份把服务器加进 Steam 收藏（见 steam.AddFavorite）
+	if len(os.Args) > 1 && os.Args[1] == steam.FavoriteArg {
+		os.Exit(steam.RunFavoriteChild(os.Args[2:]))
+	}
 	api := arkfgf.New(arkfgf.BaseURLFromEnv(), version)
 	authSvc := &AuthService{api: api}
 	if store, err := auth.DefaultStore(); err == nil {

@@ -18,12 +18,11 @@ import * as arkfgf$0 from "./internal/arkfgf/models.js";
 import * as session$0 from "./internal/session/models.js";
 
 /**
- * EnterGame 让 Steam 连接当前房间里的一台服务器（steam://connect/127.0.0.1:<查询端口>）。
- * 
- * 和玩家在 Steam 收藏里添加 127.0.0.1:<查询端口> 再连接是同一个流程（已实测能进服）。
- * 以前直接启动 ShooterGame.exe 带 -ExecCmds="open ..." 进不了服。
+ * EnterGame 把当前房间里的一台服务器加进 ARK 的 Steam 收藏，ARK 没开时通过 Steam 启动它。
+ * 玩家在游戏的「加入方舟 → 收藏」里选这台服务器加入（实测唯一稳定能进服的方式，见 steam.AddFavorite）。
+ * 返回给玩家看的下一步提示。
  */
-export function EnterGame(key: string): $CancellablePromise<void> {
+export function EnterGame(key: string): $CancellablePromise<string> {
     return $Call.ByID(3584857894, key);
 }
 

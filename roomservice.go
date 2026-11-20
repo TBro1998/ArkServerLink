@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"sync"
+	"time"
 
 	"arkfgf.com/link/internal/arkfgf"
 	"arkfgf.com/link/internal/easytier"
@@ -106,14 +107,16 @@ func (s *RoomService) requestJoin(id int64) {
 	}
 }
 
-// EnterGame 让 Steam 连接当前房间里的一台服务器（steam://connect/127.0.0.1:<查询端口>）。
-//
-// 和玩家在 Steam 收藏里添加 127.0.0.1:<查询端口> 再连接是同一个流程（已实测能进服）。
-// 以前直接启动 ShooterGame.exe 带 -ExecCmds="open ..." 进不了服。
-func (s *RoomService) EnterGame(key string) error {
+// enterMu 串行化 EnterGame，避免连点重复启动游戏。
+var enterMu sync.Mutex
+
+// EnterGame 把当前房间里的一台服务器加进 ARK 的 Steam 收藏，ARK 没开时通过 Steam 启动它。
+// 玩家在游戏的「加入方舟 → 收藏」里选这台服务器加入（实测唯一稳定能进服的方式，见 steam.AddFavorite）。
+// 返回给玩家看的下一步提示。
+func (s *RoomService) EnterGame(key string) (string, error) {
 	st := s.manager.Status()
 	if st.Phase != session.PhaseConnected {
-		return errors.New("还没有和服务器直连，暂时无法进服")
+		return "", errors.New("还没有和服务器直连，暂时无法进服")
 	}
 	// 房间里可能有多台服务器，key 是 Commander 里的服务器 ID；留空时选第一台
 	var target *session.ServerStatus
@@ -123,11 +126,30 @@ func (s *RoomService) EnterGame(key string) error {
 			break
 		}
 	}
-	if target == nil || target.Address == "" {
-		return errors.New("找不到这台服务器的本机端口")
+	if target == nil || target.LocalPort <= 0 {
+		return "", errors.New("找不到这台服务器的本机端口")
 	}
-	if err := application.Get().Browser.OpenURL(steam.ConnectURL(target.Address)); err != nil {
-		return fmt.Errorf("无法打开 Steam: %w", err)
+	query := target.QueryPort
+	if query <= 0 {
+		query = target.LocalPort
 	}
-	return nil
+	enterMu.Lock()
+	defer enterMu.Unlock()
+	if err := steam.AddFavorite(target.LocalPort, query); err != nil {
+		return "", fmt.Errorf("无法把服务器加入 Steam 收藏: %w", err)
+	}
+	const hint = "在游戏主菜单点「加入方舟」，切到「收藏」，选 %s 加入。"
+	where := "「" + target.Name + "」"
+	if target.Name == "" {
+		where = target.Address
+	}
+	if steam.ArkRunning() {
+		return fmt.Sprintf("ARK 已经开着。已把服务器加入收藏，"+hint+"（列表没有它时点「刷新」）", where), nil
+	}
+	// 添加收藏的子进程刚退出，等 Steam 确认"ARK"已经结束，否则可能不会再启动游戏
+	time.Sleep(2 * time.Second)
+	if err := application.Get().Browser.OpenURL(fmt.Sprintf("steam://rungameid/%d", steam.ArkAppID)); err != nil {
+		return "", fmt.Errorf("无法通过 Steam 启动 ARK: %w", err)
+	}
+	return fmt.Sprintf("已把服务器加入收藏，正在通过 Steam 启动 ARK。"+hint, where), nil
 }

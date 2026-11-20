@@ -38,6 +38,7 @@ h1, h2, h3, p { margin: 0; }
 .spacer { flex: 1; }
 .muted { color: var(--muted); }
 .bad { color: var(--bad); }
+.ok-text { color: var(--ok); }
 .small-text { font-size: 12px; }
 
 /* 按钮 */

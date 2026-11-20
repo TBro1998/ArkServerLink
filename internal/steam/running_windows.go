@@ -3,6 +3,7 @@ package steam
 import (
 	"path/filepath"
 	"strings"
+	"unsafe"
 
 	"golang.org/x/sys/windows"
 	"golang.org/x/sys/windows/registry"
@@ -42,4 +43,22 @@ func Running() bool {
 		return false
 	}
 	return strings.EqualFold(filepath.Base(windows.UTF16ToString(buf[:size])), "steam.exe")
+}
+
+// ArkRunning 报告 ARK（ShooterGame.exe）是否已经在运行。
+// 游戏已经开着时不再通过 Steam 启动，玩家直接在游戏的收藏列表里选服务器。
+func ArkRunning() bool {
+	snap, err := windows.CreateToolhelp32Snapshot(windows.TH32CS_SNAPPROCESS, 0)
+	if err != nil {
+		return false
+	}
+	defer windows.CloseHandle(snap)
+	var e windows.ProcessEntry32
+	e.Size = uint32(unsafe.Sizeof(e))
+	for err = windows.Process32First(snap, &e); err == nil; err = windows.Process32Next(snap, &e) {
+		if strings.EqualFold(windows.UTF16ToString(e.ExeFile[:]), "ShooterGame.exe") {
+			return true
+		}
+	}
+	return false
 }
