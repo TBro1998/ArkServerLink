@@ -1,5 +1,5 @@
 import { type ReactNode, useCallback, useEffect, useRef, useState } from "react";
-import { Events } from "@wailsio/runtime";
+import { Clipboard, Events } from "@wailsio/runtime";
 import { AuthService, RoomService } from "../bindings/arkfgf.com/link";
 import type { AuthState } from "../bindings/arkfgf.com/link/models";
 import type { Room, RoomList } from "../bindings/arkfgf.com/link/internal/arkfgf/models";
@@ -306,6 +306,27 @@ function Welcome({ status, onOpenRoom }: { status: Status; onOpenRoom: (id: numb
           查看当前连接：{status.room_name || `房间 #${status.room_id}`}
         </button>
       )}
+      <QQGroup />
+    </div>
+  );
+}
+
+const QQ_GROUP = "879898092";
+
+function QQGroup() {
+  const [copied, setCopied] = useState(false);
+  const copy = async () => {
+    await Clipboard.SetText(QQ_GROUP);
+    setCopied(true);
+    setTimeout(() => setCopied(false), 1500);
+  };
+  return (
+    <div className="community">
+      <span>arkfgf.com 玩家交流群（QQ）</span>
+      <code>{QQ_GROUP}</code>
+      <button className="ghost small" onClick={copy}>
+        {copied ? "已复制" : "复制群号"}
+      </button>
     </div>
   );
 }
