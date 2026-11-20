@@ -49,6 +49,11 @@ export interface ServerStatus {
     "raw_port": number;
     "query_port": number;
     "command": string;
+
+    /**
+     * Steam 里连接用的地址（查询端口）：收藏里添加它，或 steam://connect/<address>
+     */
+    "address": string;
 }
 
 /**

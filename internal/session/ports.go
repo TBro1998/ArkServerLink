@@ -8,10 +8,23 @@ import (
 )
 
 // Ports 是本机用来转发的三个 UDP 端口：L→game_port、L+1→game_port+1、Q→query_port。
+//
+// Steam 进服（收藏、steam://connect）先向 Q 查询 A2S_INFO，再连「127.0.0.1 + 回复里的游戏端口」，
+// 回复里是服务器自己的 game_port。L 和 game_port 不同时（玩家电脑上 7777 被占用），
+// Q 由助手的查询代理监听，把回复里的游戏端口改成 L 后交给 Steam；easytier 改为在 Upstream 上转发查询端口。
 type Ports struct {
-	Game  int // L
-	Raw   int // L+1
-	Query int // Q；服务器查询端口与游戏端口重叠时为 0（不单独转发）
+	Game     int // L
+	Raw      int // L+1
+	Query    int // Q；服务器查询端口与游戏端口重叠时为 0（不单独转发）
+	Upstream int // 需要查询代理时 easytier 转发查询端口用的本机端口，不需要时为 0
+}
+
+// queryListen 返回 easytier 转发查询端口时监听的本机端口。
+func (p Ports) queryListen() int {
+	if p.Upstream > 0 {
+		return p.Upstream
+	}
+	return p.Query
 }
 
 // udpFree 判断本机 UDP 端口是否空闲：127.0.0.1 和 0.0.0.0 都要能绑上
@@ -72,22 +85,36 @@ func pickPorts(gamePort, queryPort int, free func(int) bool, random func() (int,
 	if queryPort <= 0 || queryPort == gamePort || queryPort == gamePort+1 {
 		return p, nil
 	}
-	used := func(q int) bool { return q == p.Game || q == p.Raw }
+	used := func(q int) bool { return q == p.Game || q == p.Raw || q == p.Query }
 	if !used(queryPort) && free(queryPort) {
 		p.Query = queryPort
-		return p, nil
+	} else if q, err := randomFree(used, free, random); err != nil {
+		return Ports{}, err
+	} else {
+		p.Query = q
 	}
-	for i := 0; i < 50; i++ {
-		q, err := random()
+	if p.Game != gamePort {
+		u, err := randomFree(used, free, random)
 		if err != nil {
 			return Ports{}, err
 		}
+		p.Upstream = u
+	}
+	return p, nil
+}
+
+// randomFree 随机选一个空闲、没被 used 占用的 UDP 端口。
+func randomFree(used, free func(int) bool, random func() (int, error)) (int, error) {
+	for range 50 {
+		q, err := random()
+		if err != nil {
+			return 0, err
+		}
 		if !used(q) && free(q) {
-			p.Query = q
-			return p, nil
+			return q, nil
 		}
 	}
-	return Ports{}, errors.New("找不到空闲的 UDP 端口")
+	return 0, errors.New("找不到空闲的 UDP 端口")
 }
 
 // ServerPorts 是房间里一台服务器要转发的端口（服务器上的游戏端口和查询端口）。
@@ -112,9 +139,10 @@ func pickAllPorts(servers []ServerPorts, free func(int) bool, random func() (int
 		if err != nil {
 			return nil, err
 		}
-		taken[p.Game], taken[p.Raw] = true, true
-		if p.Query > 0 {
-			taken[p.Query] = true
+		for _, port := range []int{p.Game, p.Raw, p.Query, p.Upstream} {
+			if port > 0 {
+				taken[port] = true
+			}
 		}
 		out = append(out, p)
 	}

@@ -18,11 +18,10 @@ import * as arkfgf$0 from "./internal/arkfgf/models.js";
 import * as session$0 from "./internal/session/models.js";
 
 /**
- * EnterGame 直接启动本机的 ARK 客户端并连进当前房间。
+ * EnterGame 让 Steam 连接当前房间里的一台服务器（steam://connect/127.0.0.1:<查询端口>）。
  * 
- * 用 -ExecCmds 让游戏启动后执行控制台的 open 命令，不经过 Steam 的启动器：
- * Steam 的 +connect / steam://run 走它的服务器查询流程，对 127.0.0.1 会报
- * "Unable to query server info for invite"，不会真的发出游戏报文（已实测）。
+ * 和玩家在 Steam 收藏里添加 127.0.0.1:<查询端口> 再连接是同一个流程（已实测能进服）。
+ * 以前直接启动 ShooterGame.exe 带 -ExecCmds="open ..." 进不了服。
  */
 export function EnterGame(key: string): $CancellablePromise<void> {
     return $Call.ByID(3584857894, key);

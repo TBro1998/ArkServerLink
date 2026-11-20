@@ -332,14 +332,14 @@ function ConnectionCard({ status, onRetry, login, loggingIn }: Props & { onRetry
                 </div>
               )}
               <div className="command">
-                <code>{sv.command}</code>
+                <code>{sv.address}</code>
                 <div className="btns">
-                  <button className={copied === sv.key ? "ok small" : "ghost small"} onClick={() => copy(sv.key, sv.command)}>
-                    {copied === sv.key ? "已复制" : "复制"}
+                  <button className={copied === sv.key ? "ok small" : "ghost small"} onClick={() => copy(sv.key, sv.address)}>
+                    {copied === sv.key ? "已复制" : "复制地址"}
                   </button>
                   {connected && (
                     <button className="primary small" onClick={() => enter(sv.key)} disabled={entering !== ""}>
-                      {entering === sv.key ? "正在启动 ARK…" : "进入游戏"}
+                      {entering === sv.key ? "正在打开 Steam…" : "进入游戏"}
                     </button>
                   )}
                 </div>
@@ -349,7 +349,7 @@ function ConnectionCard({ status, onRetry, login, loggingIn }: Props & { onRetry
           {enterError && <p className="bad small-text">{enterError}</p>}
           <p className="muted small-text">
             {connected
-              ? "「进入游戏」会经 Steam 启动 ARK 并自动进服，第一次启动游戏要等加载。ARK 已经开着时 Steam 收不到进服参数，按钮会把命令复制到剪贴板，在游戏里按 Tab 打开控制台粘贴回车即可。进服期间请保持助手运行。"
+              ? "「进入游戏」让 Steam 连接服务器，ARK 没开时会先启动游戏，第一次启动要等加载。没有反应时，在 Steam 的「查看 → 游戏服务器 → 收藏」里添加上面的地址，再选中它点「连接」。进服期间请保持助手运行。"
               : "显示「已直连」后，点「进入游戏」即可进服。"}
           </p>
         </>

@@ -58,6 +58,17 @@ type ServerStatus struct {
 	RawPort   int    `json:"raw_port"`
 	QueryPort int    `json:"query_port"`
 	Command   string `json:"command"`
+	// Steam 里连接用的地址（查询端口）：收藏里添加它，或 steam://connect/<address>
+	Address string `json:"address"`
+}
+
+// steamAddress 返回 Steam 连接这台服务器用的本机地址。Steam 先查询这个端口，再按回复里的游戏端口进服。
+func steamAddress(p Ports) string {
+	port := p.Query
+	if port <= 0 {
+		port = p.Game
+	}
+	return fmt.Sprintf("127.0.0.1:%d", port)
 }
 
 // Status 是给界面看的连接状态。
@@ -257,6 +268,17 @@ func (m *Manager) run(ctx context.Context, s *session, id int64) {
 		return
 	}
 	defer m.opt.Runner.Stop()
+	for _, p := range ports {
+		if p.Upstream <= 0 || p.Query <= 0 {
+			continue
+		}
+		qp, err := startQueryProxy(p.Query, p.Upstream, p.Game)
+		if err != nil {
+			m.fail(s, CodeLocal, fmt.Sprintf("无法监听本机查询端口 %d: %v", p.Query, err))
+			return
+		}
+		defer qp.Close()
+	}
 
 	m.update(s, func(st *Status) {
 		if res.Room.Name != "" {
@@ -269,6 +291,7 @@ func (m *Manager) run(ctx context.Context, s *session, id int64) {
 				Key: sv.Key, Name: sv.Name, Map: sv.Map,
 				LocalPort: ports[i].Game, RawPort: ports[i].Raw, QueryPort: ports[i].Query,
 				Command: fmt.Sprintf("open 127.0.0.1:%d", ports[i].Game),
+				Address: steamAddress(ports[i]),
 			}
 		}
 		st.LocalPort, st.RawPort, st.QueryPort = ports[0].Game, ports[0].Raw, ports[0].Query
@@ -409,6 +432,7 @@ func findServer(peers []easytier.Peer, serverIP string) *easytier.Peer {
 
 // BuildConfig 按约定生成玩家节点参数：房间里每台服务器各转发 L→port、L+1→port+1、Q→query_port，
 // ports[i] 对应 res.Servers[i]，全部合在同一个 easytier-core 进程里。
+// 需要查询代理时查询端口改为从 Upstream 转发（Q 由代理监听）。
 func BuildConfig(res *arkfgf.JoinResult, ports []Ports) easytier.Config {
 	var fw []easytier.Forward
 	for i, sv := range res.Servers {
@@ -421,7 +445,7 @@ func BuildConfig(res *arkfgf.JoinResult, ports []Ports) easytier.Config {
 			easytier.Forward{Proto: "udp", LocalPort: p.Raw, RemoteIP: res.ServerIP, RemotePort: sv.GamePort + 1},
 		)
 		if p.Query > 0 {
-			fw = append(fw, easytier.Forward{Proto: "udp", LocalPort: p.Query, RemoteIP: res.ServerIP, RemotePort: sv.QueryPort})
+			fw = append(fw, easytier.Forward{Proto: "udp", LocalPort: p.queryListen(), RemoteIP: res.ServerIP, RemotePort: sv.QueryPort})
 		}
 	}
 	return easytier.Config{

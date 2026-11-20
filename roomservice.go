@@ -106,14 +106,10 @@ func (s *RoomService) requestJoin(id int64) {
 	}
 }
 
-// enterMu 串行化 EnterGame，避免连点重复拉起一个游戏进程。
-var enterMu sync.Mutex
-
-// EnterGame 直接启动本机的 ARK 客户端并连进当前房间。
+// EnterGame 让 Steam 连接当前房间里的一台服务器（steam://connect/127.0.0.1:<查询端口>）。
 //
-// 用 -ExecCmds 让游戏启动后执行控制台的 open 命令，不经过 Steam 的启动器：
-// Steam 的 +connect / steam://run 走它的服务器查询流程，对 127.0.0.1 会报
-// "Unable to query server info for invite"，不会真的发出游戏报文（已实测）。
+// 和玩家在 Steam 收藏里添加 127.0.0.1:<查询端口> 再连接是同一个流程（已实测能进服）。
+// 以前直接启动 ShooterGame.exe 带 -ExecCmds="open ..." 进不了服。
 func (s *RoomService) EnterGame(key string) error {
 	st := s.manager.Status()
 	if st.Phase != session.PhaseConnected {
@@ -127,24 +123,11 @@ func (s *RoomService) EnterGame(key string) error {
 			break
 		}
 	}
-	if target == nil || target.LocalPort <= 0 {
+	if target == nil || target.Address == "" {
 		return errors.New("找不到这台服务器的本机端口")
 	}
-	enterMu.Lock()
-	defer enterMu.Unlock()
-	// 游戏已经开着时新进程会退出，把命令放进剪贴板让玩家自己粘贴
-	if steam.ArkRunning() {
-		application.Get().Clipboard.SetText(target.Command)
-		return errors.New("ARK 已经在运行，没法再启动一个。进服命令已经复制，在游戏里按 Tab 打开控制台粘贴回车即可。")
+	if err := application.Get().Browser.OpenURL(steam.ConnectURL(target.Address)); err != nil {
+		return fmt.Errorf("无法打开 Steam: %w", err)
 	}
-	exe, err := steam.FindARK()
-	if err != nil {
-		return err
-	}
-	cmd := steam.ARKCommand(exe, target.LocalPort)
-	if err := cmd.Start(); err != nil {
-		return fmt.Errorf("无法启动 ARK: %w", err)
-	}
-	_ = cmd.Process.Release()
 	return nil
 }

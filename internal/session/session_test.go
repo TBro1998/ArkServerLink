@@ -28,15 +28,16 @@ func TestPickPortsPrefersServerPorts(t *testing.T) {
 
 func TestPickPortsFallback(t *testing.T) {
 	busy := map[int]bool{7778: true, 27015: true, 40001: true}
-	randoms := []int{40000, 50000, 50001, 50002}
+	randoms := []int{40000, 50000, 50001, 50002, 50003}
 	i := 0
 	random := func() (int, error) { i++; return randoms[i-1], nil }
 	p, err := pickPorts(7777, 27015, func(port int) bool { return !busy[port] }, random)
 	if err != nil {
 		t.Fatal(err)
 	}
-	// 7778 被占 → 随机；40000 的 +1 被占 → 换 50000；查询端口被占，50001 与 L+1 冲突 → 50002
-	if p != (Ports{Game: 50000, Raw: 50001, Query: 50002}) {
+	// 7778 被占 → 随机；40000 的 +1 被占 → 换 50000；查询端口被占，50001 与 L+1 冲突 → 50002；
+	// L 和服务器的游戏端口不同，查询代理的上游 → 50003
+	if p != (Ports{Game: 50000, Raw: 50001, Query: 50002, Upstream: 50003}) {
 		t.Errorf("p = %+v", p)
 	}
 }
@@ -66,7 +67,7 @@ func TestPickPortsReal(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if p.Game == taken || p.Raw != p.Game+1 || !udpFree(p.Game) || !udpFree(p.Raw) || p.Query == 0 {
+	if p.Game == taken || p.Raw != p.Game+1 || !udpFree(p.Game) || !udpFree(p.Raw) || p.Query == 0 || p.Upstream == 0 {
 		t.Errorf("p = %+v taken = %d", p, taken)
 	}
 }
@@ -80,19 +81,22 @@ func TestPickAllPorts(t *testing.T) {
 	}
 
 	// 第二台的游戏端口 7778 正好是第一台的 L+1，第二台的查询端口和第一台的相同：都要换成随机端口
-	randoms := []int{40000, 40002}
+	randoms := []int{40000, 40002, 40003}
 	i := 0
 	random := func() (int, error) { i++; return randoms[i-1], nil }
 	ps, err = pickAllPorts([]ServerPorts{{Game: 7777, Query: 27015}, {Game: 7778, Query: 27015}}, all, random)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if ps[1] != (Ports{Game: 40000, Raw: 40001, Query: 40002}) {
+	if ps[1] != (Ports{Game: 40000, Raw: 40001, Query: 40002, Upstream: 40003}) {
 		t.Fatalf("ps = %+v", ps)
 	}
 	seen := map[int]bool{}
 	for _, p := range ps {
-		for _, port := range []int{p.Game, p.Raw, p.Query} {
+		for _, port := range []int{p.Game, p.Raw, p.Query, p.Upstream} {
+			if port == 0 {
+				continue
+			}
 			if seen[port] {
 				t.Fatalf("端口 %d 重复: %+v", port, ps)
 			}
@@ -116,7 +120,7 @@ func TestJoinMultipleServers(t *testing.T) {
 		t.Fatalf("st = %+v", st)
 	}
 	a, b := st.Servers[0], st.Servers[1]
-	if a.Key != "1" || a.Name != "集群 A" || a.Command != "open 127.0.0.1:7777" || a.QueryPort != 27015 {
+	if a.Key != "1" || a.Name != "集群 A" || a.Command != "open 127.0.0.1:7777" || a.QueryPort != 27015 || a.Address != "127.0.0.1:27015" {
 		t.Errorf("server a = %+v", a)
 	}
 	if b.Key != "2" || b.Map != "Ragnarok" || b.Command != "open 127.0.0.1:7779" || b.RawPort != 7780 {
@@ -134,6 +138,61 @@ func TestJoinMultipleServers(t *testing.T) {
 	// 一个节点的直连就够了：所有服务器都在同一个虚拟 IP 上
 	r.set(func(f *fakeRunner) { f.peers = []easytier.Peer{{IPv4: "10.126.126.1", Cost: "p2p", LatencyMs: "10"}} })
 	waitPhase(t, m, PhaseConnected)
+}
+
+// 本机游戏端口和服务器不同时：查询端口由代理监听，easytier 在上游端口转发，断开后代理释放端口
+func TestJoinStartsQueryProxy(t *testing.T) {
+	r := &fakeRunner{}
+	m := newTestManager(t, func(w http.ResponseWriter, _ *http.Request) { w.Write([]byte(joinBodyMulti("集群"))) }, r, nil)
+	var ports []Ports
+	m.opt.PickPorts = func(s []ServerPorts) ([]Ports, error) {
+		ports = make([]Ports, len(s))
+		for i := range s {
+			var free [3]int
+			for j := range free {
+				p, err := randomUDPPort()
+				if err != nil {
+					return nil, err
+				}
+				free[j] = p
+			}
+			ports[i] = Ports{Game: 40000 + 2*i, Raw: 40001 + 2*i, Query: free[0], Upstream: free[1]}
+		}
+		return ports, nil
+	}
+	if err := m.Join(12, ""); err != nil {
+		t.Fatal(err)
+	}
+	st := waitPhase(t, m, PhaseConnecting)
+	for i, sv := range st.Servers {
+		if sv.Address != fmt.Sprintf("127.0.0.1:%d", ports[i].Query) {
+			t.Errorf("server %d address = %q", i, sv.Address)
+		}
+		if udpFree(ports[i].Query) {
+			t.Errorf("查询代理没有监听 %d", ports[i].Query)
+		}
+	}
+	found := 0
+	for _, f := range r.cfg.Forwards {
+		for _, p := range ports {
+			if f.LocalPort == p.Query {
+				t.Errorf("easytier 不应再监听查询端口: %+v", f)
+			}
+			if f.LocalPort == p.Upstream {
+				found++
+			}
+		}
+	}
+	if found != len(ports) {
+		t.Errorf("forwards = %+v", r.cfg.Forwards)
+	}
+
+	m.Leave()
+	for _, p := range ports {
+		if !udpFree(p.Query) {
+			t.Errorf("断开后查询端口 %d 没有释放", p.Query)
+		}
+	}
 }
 
 func TestJoinEmptyRoom(t *testing.T) {
@@ -156,7 +215,7 @@ func TestBuildConfig(t *testing.T) {
 	res := &arkfgf.JoinResult{NetworkName: "ark-1", Credential: testCred, Peers: []string{"tcp://et.arkfgf.com:11010"},
 		ServerIP: "10.126.126.1",
 		Servers:  []arkfgf.JoinServer{{Key: "1", GamePort: 7777, QueryPort: 27015}, {Key: "2", GamePort: 7779, QueryPort: 27017}}}
-	cfg := BuildConfig(res, []Ports{{Game: 7787, Raw: 7788, Query: 27020}, {Game: 7789, Raw: 7790, Query: 27021}})
+	cfg := BuildConfig(res, []Ports{{Game: 7787, Raw: 7788, Query: 27020}, {Game: 7789, Raw: 7790, Query: 27021, Upstream: 40000}})
 	if err := cfg.Validate(); err != nil {
 		t.Fatal(err)
 	}
@@ -167,7 +226,8 @@ func TestBuildConfig(t *testing.T) {
 		"--port-forward udp://127.0.0.1:27020/10.126.126.1:27015",
 		"--port-forward udp://127.0.0.1:7789/10.126.126.1:7779",
 		"--port-forward udp://127.0.0.1:7790/10.126.126.1:7780",
-		"--port-forward udp://127.0.0.1:27021/10.126.126.1:27017",
+		// 第二台需要查询代理：27021 由代理监听，easytier 在上游端口转发查询端口
+		"--port-forward udp://127.0.0.1:40000/10.126.126.1:27017",
 		"--network-name ark-1",
 	} {
 		if !strings.Contains(args, want) {
