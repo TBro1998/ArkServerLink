@@ -125,7 +125,7 @@ function Header(props: LoginProps & { logout: () => void; status: Status; onOpen
   return (
     <header className="topbar">
       <div className="brand">
-        <span className="mark">A</span>
+        <img className="mark" src="/arkfgf-icon-64.png" alt="" />
         <span className="brand-name">ARKFGF</span>
         <span className="brand-sub">联机助手</span>
       </div>

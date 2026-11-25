@@ -80,12 +80,7 @@ button.big { padding: 11px 26px; font-size: 15px; }
   flex-shrink: 0;
 }
 .brand { display: flex; align-items: center; gap: 9px; }
-.mark {
-  width: 28px; height: 28px; border-radius: 7px;
-  display: flex; align-items: center; justify-content: center;
-  background: linear-gradient(135deg, var(--accent), var(--accent-2));
-  color: var(--bg); font-weight: 900; font-size: 14px;
-}
+.mark { width: 30px; height: 30px; flex-shrink: 0; }
 .brand-name { font-weight: 800; letter-spacing: 0.04em; }
 .brand-sub { color: var(--muted); font-size: 13px; }
 
