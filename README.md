@@ -57,6 +57,15 @@
 
 ---
 
+## 接口地址（开发用）
+
+助手调用 arkfgf.com 的两组接口：Steam 登录在 `https://arkfgf.com/api/v1`，联机大厅（房间列表、加入房间、检查新版本）在 `https://link.arkfgf.com/api/v1`。本地联调时可以用环境变量改：
+
+- `ARKFGF_API`：Steam 登录的接口地址。设置了而没有设置 `ARKFGF_LINK_API` 时，联机大厅也用这个地址（一个本地网站提供所有接口）
+- `ARKFGF_LINK_API`：联机大厅的接口地址
+
+---
+
 ## 许可
 
 [Apache License 2.0](LICENSE)

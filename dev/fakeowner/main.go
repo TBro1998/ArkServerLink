@@ -33,7 +33,7 @@ import (
 const credTTL = 30 * 24 * time.Hour // 与 Commander 一致：30 天
 
 var (
-	apiBase  = flag.String("api", envOr("ARKFGF_API", "http://127.0.0.1:8080/api/v1"), "网站接口根地址")
+	apiBase  = flag.String("api", envOr("ARKFGF_LINK_API", envOr("ARKFGF_API", "http://127.0.0.1:8080/api/v1")), "联机大厅接口（/link/...）的根地址，默认取 ARKFGF_LINK_API，没有时取 ARKFGF_API")
 	compose  = flag.String("compose", filepath.Join("dev", "docker-compose.yml"), "docker compose 文件")
 	name     = flag.String("name", "本地联调房间", "房间名")
 	stateArg = flag.String("state", filepath.Join("dev", "bin", "fakeowner.json"), "保存房间 ID 和令牌的文件")

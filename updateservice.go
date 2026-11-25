@@ -81,7 +81,7 @@ func newUpdateService(api *arkfgf.Client, version string) *UpdateService {
 	return s
 }
 
-// siteURL 由接口地址推出网站地址：https://arkfgf.com/api/v1 → https://arkfgf.com
+// siteURL 由账号接口地址推出网站地址：https://arkfgf.com/api/v1 → https://arkfgf.com
 func siteURL(api string) string {
 	return strings.TrimSuffix(strings.TrimRight(api, "/"), "/api/v1")
 }

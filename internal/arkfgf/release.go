@@ -69,7 +69,7 @@ type ClientReleases struct {
 // ClientReleases 查询联机助手的最新版本。
 func (c *Client) ClientReleases(ctx context.Context) (*ClientReleases, error) {
 	var out ClientReleases
-	if err := c.do(ctx, http.MethodGet, "/link/client/releases", "", &out); err != nil {
+	if err := c.do(ctx, http.MethodGet, c.linkBase+"/link/client/releases", "", &out); err != nil {
 		return nil, err
 	}
 	return &out, nil

@@ -228,13 +228,67 @@ func TestSteamOpenIDURL(t *testing.T) {
 	}
 }
 
-func TestBaseURLFromEnv(t *testing.T) {
-	t.Setenv("ARKFGF_API", "")
-	if BaseURLFromEnv() != DefaultBaseURL {
-		t.Error("默认地址错误")
+func TestBaseURLsFromEnv(t *testing.T) {
+	cases := []struct {
+		api, link         string
+		wantAcct, wantLnk string
+	}{
+		{"", "", DefaultBaseURL, DefaultLinkBaseURL},
+		{"http://127.0.0.1:8080/api/v1/", "", "http://127.0.0.1:8080/api/v1", "http://127.0.0.1:8080/api/v1"},
+		{"http://a/api/v1", "http://l/api/v1/", "http://a/api/v1", "http://l/api/v1"},
+		{"", "http://l/api/v1", DefaultBaseURL, "http://l/api/v1"},
 	}
-	t.Setenv("ARKFGF_API", "http://127.0.0.1:8080/api/v1/")
-	if BaseURLFromEnv() != "http://127.0.0.1:8080/api/v1" {
-		t.Errorf("got %s", BaseURLFromEnv())
+	for _, tc := range cases {
+		t.Setenv("ARKFGF_API", tc.api)
+		t.Setenv("ARKFGF_LINK_API", tc.link)
+		acct, lnk := BaseURLsFromEnv()
+		if acct != tc.wantAcct || lnk != tc.wantLnk {
+			t.Errorf("ARKFGF_API=%q ARKFGF_LINK_API=%q: got %q %q", tc.api, tc.link, acct, lnk)
+		}
+	}
+}
+
+// 账号接口和联机大厅接口分别发到各自的地址
+func TestSplitBases(t *testing.T) {
+	var accountHits, linkHits []string
+	acct := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		accountHits = append(accountHits, r.URL.Path)
+		w.Write([]byte(`{"steam_id":"1","name":"a"}`))
+	}))
+	t.Cleanup(acct.Close)
+	link := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		linkHits = append(linkHits, r.URL.Path)
+		w.Write([]byte(`{}`))
+	}))
+	t.Cleanup(link.Close)
+
+	c := NewSplit(acct.URL+"/api/v1", link.URL+"/api/v1/", "x")
+	ctx := context.Background()
+	if _, err := c.Me(ctx, "tok"); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := c.ListRooms(ctx, "", "", 0); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := c.GetRoom(ctx, 7); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := c.Join(ctx, "tok", 7); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := c.ClientReleases(ctx); err != nil {
+		t.Fatal(err)
+	}
+	if got := strings.Join(accountHits, ","); got != "/api/v1/me" {
+		t.Errorf("账号接口收到 %s", got)
+	}
+	if got := strings.Join(linkHits, ","); got != "/api/v1/link/rooms,/api/v1/link/rooms/7,/api/v1/link/rooms/7/join,/api/v1/link/client/releases" {
+		t.Errorf("联机大厅接口收到 %s", got)
+	}
+	if !strings.HasPrefix(c.SteamLoginURL(1, "s"), acct.URL+"/api/v1/auth/steam/login?") {
+		t.Errorf("SteamLoginURL = %s", c.SteamLoginURL(1, "s"))
+	}
+	if c.BaseURL() != acct.URL+"/api/v1" || c.LinkBaseURL() != link.URL+"/api/v1" {
+		t.Errorf("BaseURL = %s, LinkBaseURL = %s", c.BaseURL(), c.LinkBaseURL())
 	}
 }

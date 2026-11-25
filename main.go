@@ -49,7 +49,8 @@ func main() {
 	if len(os.Args) > 1 && os.Args[1] == steam.FavoriteArg {
 		os.Exit(steam.RunFavoriteChild(os.Args[2:]))
 	}
-	api := arkfgf.New(arkfgf.BaseURLFromEnv(), version)
+	accountAPI, linkAPI := arkfgf.BaseURLsFromEnv()
+	api := arkfgf.NewSplit(accountAPI, linkAPI, version)
 	authSvc := &AuthService{api: api}
 	if store, err := auth.DefaultStore(); err == nil {
 		authSvc.store = store

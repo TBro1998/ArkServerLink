@@ -1,4 +1,4 @@
-// Package arkfgf 是 arkfgf.com 联机房接口（/api/v1/link，约定见 docs/p2p-link.md）的客户端。
+// Package arkfgf 是 arkfgf.com 接口的客户端：账号接口（Steam 登录）和联机大厅接口（/link/...）。
 package arkfgf
 
 import (
@@ -15,37 +15,59 @@ import (
 	"time"
 )
 
-// DefaultBaseURL 是线上接口地址，可用环境变量 ARKFGF_API 覆盖（本地联调用）。
-const DefaultBaseURL = "https://arkfgf.com/api/v1"
+// 线上接口地址。账号接口（Steam 登录、当前用户）在 DefaultBaseURL，
+// 联机大厅的接口（/link/...：房间列表、房间详情、加入、客户端版本）在 DefaultLinkBaseURL。
+const (
+	DefaultBaseURL     = "https://arkfgf.com/api/v1"
+	DefaultLinkBaseURL = "https://link.arkfgf.com/api/v1"
+)
 
-// BaseURLFromEnv 返回 ARKFGF_API 或默认地址，去掉末尾的斜杠。
-func BaseURLFromEnv() string {
-	if v := strings.TrimSpace(os.Getenv("ARKFGF_API")); v != "" {
-		return strings.TrimRight(v, "/")
+// BaseURLsFromEnv 返回账号接口和联机大厅接口的地址，去掉末尾的斜杠（本地联调用）：
+//   - 环境变量 ARKFGF_API 没有设置（或为空）时，账号接口用 DefaultBaseURL，联机大厅用 DefaultLinkBaseURL
+//   - ARKFGF_API 设成某个地址时，账号接口用它；ARKFGF_LINK_API 没有设置时联机大厅也用它
+//     （一个模拟网站提供所有接口）
+//   - ARKFGF_LINK_API 设置了时联机大厅用它
+func BaseURLsFromEnv() (account, link string) {
+	account, link = DefaultBaseURL, DefaultLinkBaseURL
+	if v := strings.TrimRight(strings.TrimSpace(os.Getenv("ARKFGF_API")), "/"); v != "" {
+		account, link = v, v
 	}
-	return DefaultBaseURL
+	if v := strings.TrimRight(strings.TrimSpace(os.Getenv("ARKFGF_LINK_API")), "/"); v != "" {
+		link = v
+	}
+	return account, link
 }
 
 const maxBody = 4 << 20
 
-// Client 调用网站接口。需要登录的接口由调用方传入 JWT。
+// Client 调用网站接口。需要登录的接口由调用方传入 JWT（账号接口和联机大厅接口用同一个）。
 type Client struct {
-	base      string
+	base      string // 账号接口
+	linkBase  string // 联机大厅接口（/link/...）
 	userAgent string
 	http      *http.Client
 }
 
-// New 创建客户端。version 用在 User-Agent 里。
+// New 创建客户端，账号接口和联机大厅接口都在 base 下（测试、本地联调用）。version 用在 User-Agent 里。
 func New(base, version string) *Client {
+	return NewSplit(base, base, version)
+}
+
+// NewSplit 创建客户端：账号接口在 base，联机大厅接口在 linkBase。
+func NewSplit(base, linkBase, version string) *Client {
 	return &Client{
 		base:      strings.TrimRight(base, "/"),
+		linkBase:  strings.TrimRight(linkBase, "/"),
 		userAgent: "ArkServerLink/" + version,
 		http:      &http.Client{Timeout: 15 * time.Second},
 	}
 }
 
-// BaseURL 返回接口根地址，例如 https://arkfgf.com/api/v1。
+// BaseURL 返回账号接口的根地址，例如 https://arkfgf.com/api/v1。
 func (c *Client) BaseURL() string { return c.base }
+
+// LinkBaseURL 返回联机大厅接口的根地址，例如 https://link.arkfgf.com/api/v1。
+func (c *Client) LinkBaseURL() string { return c.linkBase }
 
 // ListRooms 列出在线房间。page 从 1 开始，0 表示第一页。
 func (c *Client) ListRooms(ctx context.Context, q, mapName string, page int) (*RoomList, error) {
@@ -64,7 +86,7 @@ func (c *Client) ListRooms(ctx context.Context, q, mapName string, page int) (*R
 		path += "?" + v.Encode()
 	}
 	var out RoomList
-	if err := c.do(ctx, http.MethodGet, path, "", &out); err != nil {
+	if err := c.do(ctx, http.MethodGet, c.linkBase+path, "", &out); err != nil {
 		return nil, err
 	}
 	return &out, nil
@@ -73,7 +95,7 @@ func (c *Client) ListRooms(ctx context.Context, q, mapName string, page int) (*R
 // GetRoom 返回房间详情，离线房间也能查到。
 func (c *Client) GetRoom(ctx context.Context, id int64) (*RoomDetail, error) {
 	var out RoomDetail
-	if err := c.do(ctx, http.MethodGet, fmt.Sprintf("/link/rooms/%d", id), "", &out); err != nil {
+	if err := c.do(ctx, http.MethodGet, c.linkBase+fmt.Sprintf("/link/rooms/%d", id), "", &out); err != nil {
 		return nil, err
 	}
 	return &out, nil
@@ -85,7 +107,7 @@ func (c *Client) Join(ctx context.Context, token string, id int64) (*JoinResult,
 		return nil, &APIError{Status: http.StatusUnauthorized, Code: CodeUnauthorized, Message: messages[CodeUnauthorized]}
 	}
 	var out JoinResult
-	if err := c.do(ctx, http.MethodPost, fmt.Sprintf("/link/rooms/%d/join", id), token, &out); err != nil {
+	if err := c.do(ctx, http.MethodPost, c.linkBase+fmt.Sprintf("/link/rooms/%d/join", id), token, &out); err != nil {
 		return nil, err
 	}
 	return &out, nil
@@ -94,7 +116,7 @@ func (c *Client) Join(ctx context.Context, token string, id int64) (*JoinResult,
 // Me 返回当前登录用户。
 func (c *Client) Me(ctx context.Context, token string) (*User, error) {
 	var out User
-	if err := c.do(ctx, http.MethodGet, "/me", token, &out); err != nil {
+	if err := c.do(ctx, http.MethodGet, c.base+"/me", token, &out); err != nil {
 		return nil, err
 	}
 	return &out, nil
@@ -136,8 +158,9 @@ func (c *Client) SteamOpenIDURL(ctx context.Context, loginURL string) (string, e
 	return loc.String(), nil
 }
 
-func (c *Client) do(ctx context.Context, method, path, token string, out any) error {
-	req, err := http.NewRequestWithContext(ctx, method, c.base+path, nil)
+// do 请求完整地址 rawURL（c.base 或 c.linkBase 加路径）。
+func (c *Client) do(ctx context.Context, method, rawURL, token string, out any) error {
+	req, err := http.NewRequestWithContext(ctx, method, rawURL, nil)
 	if err != nil {
 		return err
 	}
