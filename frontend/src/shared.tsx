@@ -80,3 +80,22 @@ export function ASABadge() {
     </span>
   );
 }
+
+// 房间（一个 Commander）里可以有多台服务器。网站给的房间级地图、模式是第一台服务器的值，多台时会误导，按每台服务器算
+
+type RoomLike = { map: string; pvp: boolean; servers: { map: string; pvp: boolean }[] | null };
+
+/** 房间里各服务器的地图（去重，按服务器顺序）；没有服务器列表时用房间的地图 */
+export function roomMaps(room: RoomLike): string[] {
+  const maps = (room.servers ?? []).map((s) => s.map).filter(Boolean);
+  return maps.length > 0 ? [...new Set(maps)] : room.map ? [room.map] : [];
+}
+
+/** 房间的模式：服务器都是 PvP / 都是 PvE，或者两种都有 */
+export function roomMode(room: RoomLike): "PvP" | "PvE" | "PvP / PvE" {
+  const servers = room.servers ?? [];
+  if (servers.length === 0) return room.pvp ? "PvP" : "PvE";
+  const pvp = servers.some((s) => s.pvp);
+  const pve = servers.some((s) => !s.pvp);
+  return pvp && pve ? "PvP / PvE" : pvp ? "PvP" : "PvE";
+}

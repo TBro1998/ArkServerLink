@@ -61,6 +61,8 @@ func NormalizeGame(g Game) Game {
 
 // RoomServer 是房间里的一台服务器（公开信息，不含端口）。
 type RoomServer struct {
+	// Commander 里的服务器 ID，和加入响应里的 key 相同（旧版网站不返回，为空）
+	Key        string `json:"key"`
 	Name       string `json:"name"`
 	Game       Game   `json:"game"` // ase 或 asa，客户端解析后不会为空
 	Map        string `json:"map"`
@@ -68,13 +70,21 @@ type RoomServer struct {
 	MaxPlayers int    `json:"max_players"`
 	Password   bool   `json:"password"`
 	PvP        bool   `json:"pvp"`
-	Online     bool   `json:"online"`
+	ArkAPI     bool   `json:"arkapi"`
+	InCluster  bool   `json:"in_cluster"`
+	// 房间里的集群编号：同一集群的服务器编号相同（从 1 开始），不属于集群为 0
+	ClusterGroup int      `json:"cluster_group"`
+	Mods         []string `json:"mods"` // ASE 是创意工坊 ID，ASA 是 CurseForge 项目 ID
+	Version      string   `json:"version"`
+	Rates        Rates    `json:"rates"`
+	Online       bool     `json:"online"`
 }
 
 // Mod 是房间详情里带名称的 Mod。
 type Mod struct {
 	ID    string `json:"id"`
-	Title string `json:"title"`
+	Game  Game   `json:"game"`  // 用到这个 Mod 的服务器的游戏；ASA 的 Mod 在 CurseForge 上，没有名称
+	Title string `json:"title"` // 还没查到名称时为空
 }
 
 // RoomDetail 是 GET /link/rooms/:id 的响应。

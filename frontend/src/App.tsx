@@ -7,7 +7,7 @@ import { Phase, type Status } from "../bindings/arkfgf.com/link/internal/session
 import { AuthChanged, DeeplinkJoin } from "../bindings/events";
 import { RoomDetailPane } from "./RoomDetail";
 import { errText, mapName } from "./format";
-import { ASABadge, hasASA, isActive, LockIcon, phaseLabel, phaseTone, SteamIcon, type LoginProps } from "./shared";
+import { ASABadge, hasASA, isActive, LockIcon, phaseLabel, phaseTone, roomMaps, roomMode, SteamIcon, type LoginProps } from "./shared";
 import { UpdateBadge, UpdateDialog, useUpdate } from "./Update";
 
 const idleStatus: Status = {
@@ -249,14 +249,21 @@ function RoomListPane({ selected, onSelect, activeRoom }: { selected: number; on
   );
 }
 
+// 列表里的一个房间。房间里有多台服务器时显示台数和所有地图，模式按每台服务器算
 function RoomRow({ room, selected, active, onClick }: { room: Room; selected: boolean; active: boolean; onClick: () => void }) {
   const full = room.max_players > 0 && room.players >= room.max_players;
   const mods = room.mods?.length ?? 0;
+  const servers = room.servers ?? [];
+  const multi = servers.length > 1;
+  const maps = roomMaps(room);
+  const mode = roomMode(room);
+  // 只有一台服务器时才在房间名前标密码；多台时到详情页看是哪台
+  const locked = multi ? false : servers.length === 1 ? servers[0].password : room.password;
   return (
     <button className={`row ${selected ? "selected" : ""}`} onClick={onClick}>
       <div className="row-top">
         <span className="row-name">
-          {room.password && <LockIcon />}
+          {locked && <LockIcon />}
           {room.name || `房间 #${room.id}`}
         </span>
         <span className={`players ${full ? "full" : ""}`}>
@@ -266,8 +273,11 @@ function RoomRow({ room, selected, active, onClick }: { room: Room; selected: bo
       </div>
       <div className="row-meta">
         {hasASA(room.servers) && <ASABadge />}
-        <span>{mapName(room.map)}</span>
-        <span className={`mode ${room.pvp ? "pvp" : "pve"}`}>{room.pvp ? "PvP" : "PvE"}</span>
+        {multi && <span className="row-servers">{servers.length} 台服务器</span>}
+        <span className="row-maps" title={maps.map(mapName).join(" / ")}>
+          {maps.length > 0 ? maps.map(mapName).join(" / ") : mapName("")}
+        </span>
+        <span className={`mode ${mode === "PvP" ? "pvp" : mode === "PvE" ? "pve" : "mixed"}`}>{mode}</span>
         {mods > 0 && <span>{mods} 个 Mod</span>}
         {active && <span className="here">当前房间</span>}
       </div>

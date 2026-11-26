@@ -102,6 +102,9 @@ func (c *Client) GetRoom(ctx context.Context, id int64) (*RoomDetail, error) {
 		return nil, err
 	}
 	normalizeRoomServers(out.Servers)
+	for i := range out.ModList {
+		out.ModList[i].Game = NormalizeGame(out.ModList[i].Game)
+	}
 	return &out, nil
 }
 

@@ -48,6 +48,15 @@ export interface Mirror {
  */
 export interface Mod {
     "id": string;
+
+    /**
+     * 用到这个 Mod 的服务器的游戏；ASA 的 Mod 在 CurseForge 上，没有名称
+     */
+    "game": Game;
+
+    /**
+     * 还没查到名称时为空
+     */
     "title": string;
 }
 
@@ -152,6 +161,10 @@ export interface RoomList {
  * RoomServer 是房间里的一台服务器（公开信息，不含端口）。
  */
 export interface RoomServer {
+    /**
+     * Commander 里的服务器 ID，和加入响应里的 key 相同（旧版网站不返回，为空）
+     */
+    "key": string;
     "name": string;
 
     /**
@@ -163,6 +176,20 @@ export interface RoomServer {
     "max_players": number;
     "password": boolean;
     "pvp": boolean;
+    "arkapi": boolean;
+    "in_cluster": boolean;
+
+    /**
+     * 房间里的集群编号：同一集群的服务器编号相同（从 1 开始），不属于集群为 0
+     */
+    "cluster_group": number;
+
+    /**
+     * ASE 是创意工坊 ID，ASA 是 CurseForge 项目 ID
+     */
+    "mods": string[] | null;
+    "version": string;
+    "rates": Rates;
     "online": boolean;
 }
 

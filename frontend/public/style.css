@@ -148,9 +148,13 @@ button.big { padding: 11px 26px; font-size: 15px; }
 .players { font-variant-numeric: tabular-nums; font-weight: 600; color: var(--ok); white-space: nowrap; }
 .players small { color: var(--dim); font-weight: 400; }
 .players.full { color: var(--warn); }
-.row-meta { display: flex; gap: 10px; font-size: 12px; color: var(--muted); }
+.row-meta { display: flex; gap: 10px; font-size: 12px; color: var(--muted); min-width: 0; }
+.row-meta > * { flex-shrink: 0; }
+.row-meta .row-maps { flex-shrink: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.row-servers { color: var(--accent-2); }
 .mode.pvp { color: var(--bad); }
 .mode.pve { color: var(--ok); }
+.mode.mixed { color: #c4b5fd; }
 .here { color: var(--accent); font-weight: 600; }
 .row-tags, .tags { display: flex; flex-wrap: wrap; gap: 5px; }
 .tag { font-size: 11px; padding: 2px 7px; border-radius: 4px; background: var(--line); color: var(--muted); }
@@ -199,11 +203,6 @@ button.big { padding: 11px 26px; font-size: 15px; }
 }
 .join-row p { line-height: 1.6; }
 .btns { display: flex; align-items: center; gap: 8px; flex-shrink: 0; }
-
-.facts { display: flex; flex-wrap: wrap; gap: 8px; }
-.fact { padding: 8px 14px; border-radius: 8px; background: var(--panel); border: 1px solid var(--line); min-width: 78px; }
-.fact span { display: block; font-size: 11px; color: var(--dim); margin-bottom: 2px; }
-.fact b { font-variant-numeric: tabular-nums; }
 
 .desc { white-space: pre-wrap; line-height: 1.7; color: #d1d5db; user-select: text; }
 .contacts { display: flex; gap: 18px; font-size: 13px; color: var(--muted); }
@@ -255,18 +254,24 @@ button.big { padding: 11px 26px; font-size: 15px; }
 .command code { font-size: 17px; color: var(--accent-2); letter-spacing: 0.02em; }
 .command .btns { display: flex; gap: 8px; }
 
-/* 房间里有多台服务器时，每台一行 */
-.server-entry { display: flex; flex-direction: column; gap: 6px; }
-.server-entry-head { display: flex; align-items: baseline; gap: 8px; }
-
-/* 房间详情里的服务器列表 */
-.room-servers { display: flex; flex-direction: column; gap: 6px; }
-.room-servers h3 { margin: 0 0 4px; }
+/* 房间详情里的服务器列表：每台服务器一张小卡片，连上后卡片里是进服方式 */
+.hl-servers { color: var(--accent-2); }
+.room-servers { display: flex; flex-direction: column; gap: 8px; }
+.room-servers h3 { margin: 0; font-size: 14px; }
 .room-server {
-  display: flex; align-items: center; gap: 10px;
-  padding: 8px 12px; border-radius: 8px; background: var(--bg); border: 1px solid var(--line);
+  display: flex; flex-direction: column; gap: 8px;
+  padding: 10px 12px; border-radius: 10px; background: var(--panel); border: 1px solid var(--line);
 }
-.room-server .name { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.room-server.linked { border-color: var(--line-2); }
+.room-server .command { background: var(--bg); }
+.room-server .command code { font-size: 15px; }
+.room-server-head { display: flex; align-items: center; gap: 10px; }
+.room-server-head .name { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-weight: 600; display: flex; align-items: center; gap: 5px; }
+.sv-players { font-variant-numeric: tabular-nums; font-size: 13px; color: var(--muted); white-space: nowrap; }
+.sv-facts { display: flex; flex-wrap: wrap; gap: 4px 12px; padding-left: 18px; font-size: 12px; color: var(--muted); }
+.sv-facts .plugin { color: #c4b5fd; }
+.sv-facts .cluster { color: #5eead4; }
+.mods .used-by { display: block; font-size: 11px; color: var(--accent-2); opacity: 0.75; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 
 .logs summary { cursor: pointer; font-size: 12px; color: var(--dim); }
 .logs summary:hover { color: var(--muted); }
