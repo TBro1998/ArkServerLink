@@ -7,7 +7,7 @@ import { Phase, type Status } from "../bindings/arkfgf.com/link/internal/session
 import { AuthChanged, DeeplinkJoin } from "../bindings/events";
 import { RoomDetailPane } from "./RoomDetail";
 import { errText, mapName } from "./format";
-import { isActive, LockIcon, phaseLabel, phaseTone, SteamIcon, type LoginProps } from "./shared";
+import { ASABadge, hasASA, isActive, LockIcon, phaseLabel, phaseTone, SteamIcon, type LoginProps } from "./shared";
 import { UpdateBadge, UpdateDialog, useUpdate } from "./Update";
 
 const idleStatus: Status = {
@@ -265,6 +265,7 @@ function RoomRow({ room, selected, active, onClick }: { room: Room; selected: bo
         </span>
       </div>
       <div className="row-meta">
+        {hasASA(room.servers) && <ASABadge />}
         <span>{mapName(room.map)}</span>
         <span className={`mode ${room.pvp ? "pvp" : "pve"}`}>{room.pvp ? "PvP" : "PvE"}</span>
         {mods > 0 && <span>{mods} 个 Mod</span>}
@@ -298,7 +299,7 @@ function Welcome({ status, onOpenRoom }: { status: Status; onOpenRoom: (id: numb
           <b>加入</b>用 Steam 登录后点「加入」，等待显示「已直连」
         </li>
         <li>
-          <b>进服</b>点「进入游戏」，助手启动 ARK 并自动连进服务器
+          <b>进服</b>点「进入游戏」，助手启动 ARK 并自动连进服务器。ASA（生存飞升）服务器在游戏里按 Tab 打开控制台，粘贴助手给出的命令进服
         </li>
       </ol>
       {isActive(status) && (

@@ -1,5 +1,5 @@
-// fakeowner 在本地联调时代替 Commander：向网站登记一个联机房，把 dev/docker-compose.yml 里的
-// 服主节点 srv 按房间的 network_name 重建，然后每 10 秒心跳一次——按 want_credentials 用 srv 的
+// fakeowner 在本地联调时代替 Commander：向网站登记一个联机房（一台 ASE 服务器和一台 ASA 服务器，
+// -asa=false 时只有 ASE），把 dev/docker-compose.yml 里的服主节点 srv 按房间的 network_name 重建，然后每 10 秒心跳一次——按 want_credentials 用 srv 的
 // easytier-cli 签发凭证上传，按 revoke 吊销并回报 revoked_ack。
 //
 // 用法（在 ArkServerLink 目录下）：
@@ -42,6 +42,7 @@ var (
 	maxBatch = flag.Int("batch", 20, "每轮最多签发的凭证数")
 	del      = flag.Bool("delete", false, "退出时下架房间（DELETE）")
 	noDocker = flag.Bool("no-docker", false, "不操作 docker（只测网站接口，凭证用随机值）")
+	withASA  = flag.Bool("asa", true, "房间里再登记一台 ASA 服务器（game=asa，游戏端口 7787，没有查询端口）")
 )
 
 type state struct {
@@ -158,12 +159,7 @@ func register(ctx context.Context, st *state) error {
 	body := map[string]any{
 		"name": *name, "description": "fakeowner 登记的本地联调房间，服务器是 udpecho。", "tags": []string{"联调"},
 		"qq_group": "", "discord": "", "server_ip": "10.126.126.1",
-		"servers": []map[string]any{{
-			"key": "1", "name": *name, "map": "TheIsland", "max_players": 70, "password": false, "pvp": false,
-			"arkapi": false, "cluster": "", "mods": []string{"731604991"}, "version": "358.24",
-			"rate_xp": 2, "rate_tame": 3, "rate_harvest": 2, "rate_breeding": 5,
-			"game_port": 7777, "query_port": 27015,
-		}},
+		"servers": servers(),
 	}
 	var resp struct {
 		ID          int64    `json:"id"`
@@ -190,6 +186,25 @@ func register(ctx context.Context, st *state) error {
 	return nil
 }
 
+// servers 返回登记的服务器：一台 ASE，加上 -asa 时再加一台 ASA（ASA 没有 Steam 查询端口，query_port 为 0）。
+func servers() []map[string]any {
+	list := []map[string]any{{
+		"key": "1", "name": *name, "game": "ase", "map": "TheIsland", "max_players": 70, "password": false, "pvp": false,
+		"arkapi": false, "cluster": "", "mods": []string{"731604991"}, "version": "358.24",
+		"rate_xp": 2, "rate_tame": 3, "rate_harvest": 2, "rate_breeding": 5,
+		"game_port": 7777, "query_port": 27015,
+	}}
+	if *withASA {
+		list = append(list, map[string]any{
+			"key": "2", "name": *name + " ASA", "game": "asa", "map": "TheIsland_WP", "max_players": 70, "password": false, "pvp": false,
+			"arkapi": false, "cluster": "", "mods": []string{}, "version": "",
+			"rate_xp": 1, "rate_tame": 1, "rate_harvest": 1, "rate_breeding": 1,
+			"game_port": 7787, "query_port": 0,
+		})
+	}
+	return list
+}
+
 type heartbeatResp struct {
 	WantCredentials int      `json:"want_credentials"`
 	Revoke          []string `json:"revoke"`
@@ -202,9 +217,13 @@ func heartbeat(ctx context.Context, st state, online bool, creds []credential, a
 	if online {
 		n = *players
 	}
+	var list []map[string]any
+	for _, sv := range servers() {
+		list = append(list, map[string]any{"key": sv["key"], "online": online, "players": n})
+	}
 	body := map[string]any{
 		"online":      online,
-		"servers":     []map[string]any{{"key": "1", "online": online, "players": n}},
+		"servers":     list,
 		"credentials": nonNil(creds), "revoked_ack": nonNil(acks),
 	}
 	var resp heartbeatResp

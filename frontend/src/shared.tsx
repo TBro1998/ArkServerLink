@@ -1,5 +1,6 @@
 // 各组件共用的状态文字、图标。
 import type { AuthState } from "../bindings/arkfgf.com/link/models";
+import { Game } from "../bindings/arkfgf.com/link/internal/arkfgf/models";
 import { Phase, type Status } from "../bindings/arkfgf.com/link/internal/session/models";
 
 export type LoginProps = {
@@ -60,5 +61,22 @@ export function SteamIcon() {
     <svg viewBox="0 0 24 24" width="16" height="16" fill="currentColor" aria-hidden="true">
       <path d="M12 2a10 10 0 0 0-9.96 9.1l5.35 2.2a2.8 2.8 0 0 1 1.6-.5h.16l2.38-3.45v-.05a3.77 3.77 0 1 1 3.77 3.77h-.09l-3.4 2.42v.13a2.83 2.83 0 0 1-5.6.56L2.4 14.6A10 10 0 1 0 12 2Zm-4.3 15.2-1.22-.5a2.12 2.12 0 1 0 1.16-2.9l1.27.52a1.56 1.56 0 1 1-1.2 2.88Zm9.62-7.85a2.51 2.51 0 1 0-2.52 2.51 2.51 2.51 0 0 0 2.52-2.5Zm-4.4 0a1.89 1.89 0 1 1 1.88 1.88 1.89 1.89 0 0 1-1.88-1.88Z" />
     </svg>
+  );
+}
+
+// ASA（方舟：生存飞升）服务器没有 Steam 查询端口，只能在游戏控制台里用 open 命令进服
+export function isASA(game: string | null | undefined): boolean {
+  return game === Game.GameASA;
+}
+
+export function hasASA(servers: { game: string }[] | null | undefined): boolean {
+  return (servers ?? []).some((s) => isASA(s.game));
+}
+
+export function ASABadge() {
+  return (
+    <span className="game-badge" title="方舟：生存飞升（ASA）">
+      ASA
+    </span>
   );
 }

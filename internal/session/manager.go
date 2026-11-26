@@ -51,19 +51,25 @@ const (
 
 // ServerStatus 是房间里一台服务器在本机的转发情况：游戏里 open 127.0.0.1:<local_port>。
 type ServerStatus struct {
-	Key       string `json:"key"`
-	Name      string `json:"name"`
-	Map       string `json:"map"`
-	LocalPort int    `json:"local_port"`
-	RawPort   int    `json:"raw_port"`
-	QueryPort int    `json:"query_port"`
-	Command   string `json:"command"`
-	// Steam 里连接用的地址（查询端口）：收藏里添加它，或 steam://connect/<address>
+	Key  string `json:"key"`
+	Name string `json:"name"`
+	Map  string `json:"map"`
+	// ase 或 asa。ASA 服务器只能在游戏控制台里用 Command 进服，没有 RawPort、QueryPort 和 Address
+	Game      arkfgf.Game `json:"game"`
+	LocalPort int         `json:"local_port"`
+	RawPort   int         `json:"raw_port"`
+	QueryPort int         `json:"query_port"`
+	Command   string      `json:"command"`
+	// Steam 里连接用的地址（查询端口）：收藏里添加它，或 steam://connect/<address>；ASA 服务器为空
 	Address string `json:"address"`
 }
 
 // steamAddress 返回 Steam 连接这台服务器用的本机地址。Steam 先查询这个端口，再按回复里的游戏端口进服。
-func steamAddress(p Ports) string {
+// ASA 服务器不能通过 Steam 进服，返回空字符串。
+func steamAddress(game arkfgf.Game, p Ports) string {
+	if game == arkfgf.GameASA {
+		return ""
+	}
 	port := p.Query
 	if port <= 0 {
 		port = p.Game
@@ -251,7 +257,11 @@ func (m *Manager) run(ctx context.Context, s *session, id int64) {
 	}
 	wanted := make([]ServerPorts, len(res.Servers))
 	for i, sv := range res.Servers {
-		wanted[i] = ServerPorts{Game: sv.GamePort, Query: sv.QueryPort}
+		if arkfgf.NormalizeGame(sv.Game) == arkfgf.GameASA {
+			wanted[i] = ServerPorts{Game: sv.GamePort, ASA: true}
+		} else {
+			wanted[i] = ServerPorts{Game: sv.GamePort, Query: sv.QueryPort}
+		}
 	}
 	ports, err := m.opt.PickPorts(wanted)
 	if err != nil {
@@ -287,11 +297,12 @@ func (m *Manager) run(ctx context.Context, s *session, id int64) {
 		st.Phase = PhaseConnecting
 		st.Servers = make([]ServerStatus, len(res.Servers))
 		for i, sv := range res.Servers {
+			game := arkfgf.NormalizeGame(sv.Game)
 			st.Servers[i] = ServerStatus{
-				Key: sv.Key, Name: sv.Name, Map: sv.Map,
+				Key: sv.Key, Name: sv.Name, Map: sv.Map, Game: game,
 				LocalPort: ports[i].Game, RawPort: ports[i].Raw, QueryPort: ports[i].Query,
 				Command: fmt.Sprintf("open 127.0.0.1:%d", ports[i].Game),
-				Address: steamAddress(ports[i]),
+				Address: steamAddress(game, ports[i]),
 			}
 		}
 		st.LocalPort, st.RawPort, st.QueryPort = ports[0].Game, ports[0].Raw, ports[0].Query
@@ -430,8 +441,8 @@ func findServer(peers []easytier.Peer, serverIP string) *easytier.Peer {
 	return nil
 }
 
-// BuildConfig 按约定生成玩家节点参数：房间里每台服务器各转发 L→port、L+1→port+1、Q→query_port，
-// ports[i] 对应 res.Servers[i]，全部合在同一个 easytier-core 进程里。
+// BuildConfig 按约定生成玩家节点参数：房间里每台 ASE 服务器各转发 L→port、L+1→port+1、Q→query_port，
+// ASA 服务器只转发 L→port；ports[i] 对应 res.Servers[i]，全部合在同一个 easytier-core 进程里。
 // 需要查询代理时查询端口改为从 Upstream 转发（Q 由代理监听）。
 func BuildConfig(res *arkfgf.JoinResult, ports []Ports) easytier.Config {
 	var fw []easytier.Forward
@@ -440,10 +451,11 @@ func BuildConfig(res *arkfgf.JoinResult, ports []Ports) easytier.Config {
 			break
 		}
 		p := ports[i]
-		fw = append(fw,
-			easytier.Forward{Proto: "udp", LocalPort: p.Game, RemoteIP: res.ServerIP, RemotePort: sv.GamePort},
-			easytier.Forward{Proto: "udp", LocalPort: p.Raw, RemoteIP: res.ServerIP, RemotePort: sv.GamePort + 1},
-		)
+		fw = append(fw, easytier.Forward{Proto: "udp", LocalPort: p.Game, RemoteIP: res.ServerIP, RemotePort: sv.GamePort})
+		if arkfgf.NormalizeGame(sv.Game) == arkfgf.GameASA {
+			continue
+		}
+		fw = append(fw, easytier.Forward{Proto: "udp", LocalPort: p.Raw, RemoteIP: res.ServerIP, RemotePort: sv.GamePort + 1})
 		if p.Query > 0 {
 			fw = append(fw, easytier.Forward{Proto: "udp", LocalPort: p.queryListen(), RemoteIP: res.ServerIP, RemotePort: sv.QueryPort})
 		}

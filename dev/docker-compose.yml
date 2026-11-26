@@ -1,5 +1,5 @@
 # 本地联调环境：公共节点（模拟 arkfgf.com）+ 服主节点（模拟 Commander）。
-# 参数与主仓库 docs/p2p-link.md 的公共节点、服主节点一致（公共节点端口映射到 127.0.0.1:21010）。用法见 README「本地联调」。
+# 参数与 arkfgf.com 的公共节点、Commander 的服主节点一致（公共节点端口映射到 127.0.0.1:21010）。用法见 README「本地联调」。
 name: arkserverlink-dev
 
 x-easytier: &easytier
@@ -39,11 +39,12 @@ services:
     command:
       - >-
         /dev-bin/udpecho 7777 &
+        /dev-bin/udpecho 7787 &
         exec easytier-core
         --network-name $${ROOM_NETWORK} --network-secret dev-room-secret
         --secure-mode --credential-file /data/cred.json
         --peers tcp://pub:11010 --ipv4 10.126.126.1 --no-tun
-        --p2p-only --tcp-whitelist 0 --udp-whitelist 7777 7778 27015
+        --p2p-only --tcp-whitelist 0 --udp-whitelist 7777 7778 27015 7787
         --listeners tcp://0.0.0.0:0 udp://0.0.0.0:0
         --console-log-level warn
 

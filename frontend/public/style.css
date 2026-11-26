@@ -154,6 +154,8 @@ button.big { padding: 11px 26px; font-size: 15px; }
 .here { color: var(--accent); font-weight: 600; }
 .row-tags, .tags { display: flex; flex-wrap: wrap; gap: 5px; }
 .tag { font-size: 11px; padding: 2px 7px; border-radius: 4px; background: var(--line); color: var(--muted); }
+/* ASA（方舟：生存飞升）服务器的标记 */
+.game-badge { display: inline-flex; align-items: center; font-size: 10px; font-weight: 700; letter-spacing: 0.04em; line-height: 1; padding: 3px 6px; border-radius: 4px; background: rgba(56, 189, 248, 0.14); color: #38bdf8; flex-shrink: 0; }
 .lock { color: var(--warn); flex-shrink: 0; }
 .pager { display: flex; align-items: center; justify-content: space-between; padding: 10px 14px; border-top: 1px solid var(--line); font-size: 12px; color: var(--muted); }
 

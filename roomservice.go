@@ -112,6 +112,7 @@ var enterMu sync.Mutex
 
 // EnterGame 把当前房间里的一台服务器加进 ARK 的 Steam 收藏，ARK 没开时通过 Steam 启动它。
 // 玩家在游戏的「加入方舟 → 收藏」里选这台服务器加入（实测唯一稳定能进服的方式，见 steam.AddFavorite）。
+// 只用于 ASE 服务器；ASA 服务器在游戏控制台里用 open 命令进服。
 // 返回给玩家看的下一步提示。
 func (s *RoomService) EnterGame(key string) (string, error) {
 	st := s.manager.Status()
@@ -128,6 +129,10 @@ func (s *RoomService) EnterGame(key string) (string, error) {
 	}
 	if target == nil || target.LocalPort <= 0 {
 		return "", errors.New("找不到这台服务器的本机端口")
+	}
+	// ASA 没有 Steam 查询端口，不能通过 Steam 收藏进服
+	if target.Game == arkfgf.GameASA {
+		return "", fmt.Errorf("这是《方舟：生存飞升》服务器，不能通过 Steam 收藏进服。请打开 ASA，在主菜单按 Tab 打开控制台，输入 %s 回车", target.Command)
 	}
 	query := target.QueryPort
 	if query <= 0 {

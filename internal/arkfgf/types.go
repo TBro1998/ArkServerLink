@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"encoding/json"
 	"strconv"
+	"strings"
 	"time"
 )
 
@@ -42,9 +43,26 @@ type Room struct {
 	Servers []RoomServer `json:"servers"`
 }
 
+// Game 是服务器的游戏：ASE（方舟：生存进化）或 ASA（方舟：生存飞升）。
+type Game string
+
+const (
+	GameASE Game = "ase"
+	GameASA Game = "asa"
+)
+
+// NormalizeGame 规范化网站返回的 game 字段：旧版网站不返回（空字符串），按 ASE 处理；不认识的值也按 ASE 处理。
+func NormalizeGame(g Game) Game {
+	if strings.EqualFold(strings.TrimSpace(string(g)), string(GameASA)) {
+		return GameASA
+	}
+	return GameASE
+}
+
 // RoomServer 是房间里的一台服务器（公开信息，不含端口）。
 type RoomServer struct {
 	Name       string `json:"name"`
+	Game       Game   `json:"game"` // ase 或 asa，客户端解析后不会为空
 	Map        string `json:"map"`
 	Players    int    `json:"players"`
 	MaxPlayers int    `json:"max_players"`
@@ -99,10 +117,12 @@ type JoinResult struct {
 }
 
 // JoinServer 是加入响应里的一台服务器。Key 在房间内唯一（Commander 里的服务器 ID）。
+// ASA 服务器没有 Steam 查询端口（QueryPort 为 0），玩家只能在游戏控制台里用 open 命令进服。
 type JoinServer struct {
 	Key       string `json:"key"`
 	Name      string `json:"name"`
 	Map       string `json:"map"`
+	Game      Game   `json:"game"` // ase 或 asa，客户端解析后不会为空
 	Online    bool   `json:"online"`
 	GamePort  int    `json:"game_port"`
 	QueryPort int    `json:"query_port"`

@@ -23,6 +23,19 @@ export interface ClientRelease {
 }
 
 /**
+ * Game 是服务器的游戏：ASE（方舟：生存进化）或 ASA（方舟：生存飞升）。
+ */
+export enum Game {
+    /**
+     * The Go zero value for the underlying type of the enum.
+     */
+    $zero = "",
+
+    GameASE = "ase",
+    GameASA = "asa",
+};
+
+/**
  * Mirror 是 GitHub 下载加速站。下载地址 = Prefix + GitHub 原始地址；Prefix 为空表示直连。
  */
 export interface Mirror {
@@ -140,6 +153,11 @@ export interface RoomList {
  */
 export interface RoomServer {
     "name": string;
+
+    /**
+     * ase 或 asa，客户端解析后不会为空
+     */
+    "game": Game;
     "map": string;
     "players": number;
     "max_players": number;

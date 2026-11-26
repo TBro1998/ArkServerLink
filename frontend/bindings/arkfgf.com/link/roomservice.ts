@@ -20,6 +20,7 @@ import * as session$0 from "./internal/session/models.js";
 /**
  * EnterGame 把当前房间里的一台服务器加进 ARK 的 Steam 收藏，ARK 没开时通过 Steam 启动它。
  * 玩家在游戏的「加入方舟 → 收藏」里选这台服务器加入（实测唯一稳定能进服的方式，见 steam.AddFavorite）。
+ * 只用于 ASE 服务器；ASA 服务器在游戏控制台里用 open 命令进服。
  * 返回给玩家看的下一步提示。
  */
 export function EnterGame(key: string): $CancellablePromise<string> {

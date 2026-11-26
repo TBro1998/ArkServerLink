@@ -7,7 +7,7 @@ import (
 )
 
 // 联机助手的版本信息（GET /link/client/releases），网站从 GitHub Release 缓存而来，
-// 下载页和客户端自动更新共用。字段约定见 docs/p2p-link.md「联机助手发布」。
+// 下载页和客户端自动更新共用。
 
 // 安装包种类，按文件名后缀区分（见 .github/workflows/release.yml）。
 const (

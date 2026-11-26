@@ -89,6 +89,9 @@ func (c *Client) ListRooms(ctx context.Context, q, mapName string, page int) (*R
 	if err := c.do(ctx, http.MethodGet, c.linkBase+path, "", &out); err != nil {
 		return nil, err
 	}
+	for i := range out.Items {
+		normalizeRoomServers(out.Items[i].Servers)
+	}
 	return &out, nil
 }
 
@@ -98,7 +101,14 @@ func (c *Client) GetRoom(ctx context.Context, id int64) (*RoomDetail, error) {
 	if err := c.do(ctx, http.MethodGet, c.linkBase+fmt.Sprintf("/link/rooms/%d", id), "", &out); err != nil {
 		return nil, err
 	}
+	normalizeRoomServers(out.Servers)
 	return &out, nil
+}
+
+func normalizeRoomServers(servers []RoomServer) {
+	for i := range servers {
+		servers[i].Game = NormalizeGame(servers[i].Game)
+	}
 }
 
 // Join 申请加入房间，返回入网参数。
@@ -109,6 +119,9 @@ func (c *Client) Join(ctx context.Context, token string, id int64) (*JoinResult,
 	var out JoinResult
 	if err := c.do(ctx, http.MethodPost, c.linkBase+fmt.Sprintf("/link/rooms/%d/join", id), token, &out); err != nil {
 		return nil, err
+	}
+	for i := range out.Servers {
+		out.Servers[i].Game = NormalizeGame(out.Servers[i].Game)
 	}
 	return &out, nil
 }

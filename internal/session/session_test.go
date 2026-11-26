@@ -52,6 +52,24 @@ func TestPickPortsOverlappingQueryPort(t *testing.T) {
 	}
 }
 
+// ASA 服务器只要一个 L：不分 L+1，也不分查询端口
+func TestPickASAPorts(t *testing.T) {
+	p, err := pickASAPorts(7777, func(int) bool { return true }, func() (int, error) { return 0, errors.New("不应调用") })
+	if err != nil || p != (Ports{Game: 7777}) {
+		t.Fatalf("p = %+v err = %v", p, err)
+	}
+	// 7777 被占时换随机端口；L+1 被占不影响 ASA
+	busy := map[int]bool{7777: true, 40001: true}
+	random := func() (int, error) { return 40000, nil }
+	p, err = pickASAPorts(7777, func(port int) bool { return !busy[port] }, random)
+	if err != nil || p != (Ports{Game: 40000}) {
+		t.Fatalf("p = %+v err = %v", p, err)
+	}
+	if _, err := pickASAPorts(0, nil, nil); err == nil {
+		t.Error("无效端口应报错")
+	}
+}
+
 func TestPickPortsReal(t *testing.T) {
 	// 占住一个端口，PickPorts 应该绕开它
 	c, err := net.ListenPacket("udp4", "127.0.0.1:0")
@@ -109,6 +127,27 @@ func TestPickAllPorts(t *testing.T) {
 	}
 }
 
+// ASE 和 ASA 混在一个房间：ASA 只占一个端口，忽略查询端口；ASE 的 L+1 不会再分给 ASA
+func TestPickAllPortsASA(t *testing.T) {
+	all := func(int) bool { return true }
+	ps, err := pickAllPorts([]ServerPorts{{Game: 7777, Query: 27015}, {Game: 7787, ASA: true}, {Game: 7789, Query: 27017}}, all, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if ps[0] != (Ports{Game: 7777, Raw: 7778, Query: 27015}) || ps[1] != (Ports{Game: 7787}) || ps[2] != (Ports{Game: 7789, Raw: 7790, Query: 27017}) {
+		t.Fatalf("ps = %+v", ps)
+	}
+
+	random := func() (int, error) { return 40000, nil }
+	ps, err = pickAllPorts([]ServerPorts{{Game: 7777, Query: 27015}, {Game: 7778, Query: 27016, ASA: true}}, all, random)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if ps[1] != (Ports{Game: 40000}) {
+		t.Fatalf("ps = %+v", ps)
+	}
+}
+
 func TestJoinMultipleServers(t *testing.T) {
 	r := &fakeRunner{}
 	m := newTestManager(t, func(w http.ResponseWriter, _ *http.Request) { w.Write([]byte(joinBodyMulti("集群"))) }, r, nil)
@@ -138,6 +177,32 @@ func TestJoinMultipleServers(t *testing.T) {
 	// 一个节点的直连就够了：所有服务器都在同一个虚拟 IP 上
 	r.set(func(f *fakeRunner) { f.peers = []easytier.Peer{{IPv4: "10.126.126.1", Cost: "p2p", LatencyMs: "10"}} })
 	waitPhase(t, m, PhaseConnected)
+}
+
+// 房间里有 ASA 服务器：状态里标出 asa，只有控制台命令，没有查询端口和 Steam 地址；只转发游戏端口
+func TestJoinASAServer(t *testing.T) {
+	r := &fakeRunner{}
+	m := newTestManager(t, func(w http.ResponseWriter, _ *http.Request) { w.Write([]byte(joinBodyMixed())) }, r, nil)
+	if err := m.Join(12, ""); err != nil {
+		t.Fatal(err)
+	}
+	st := waitPhase(t, m, PhaseConnecting)
+	if len(st.Servers) != 2 {
+		t.Fatalf("st = %+v", st)
+	}
+	ase, asa := st.Servers[0], st.Servers[1]
+	// 旧版网站不返回 game：按 ASE 处理
+	if ase.Game != arkfgf.GameASE || ase.Address != "127.0.0.1:27015" || ase.RawPort != 7778 {
+		t.Errorf("ase = %+v", ase)
+	}
+	if asa.Game != arkfgf.GameASA || asa.Command != "open 127.0.0.1:7787" || asa.LocalPort != 7787 ||
+		asa.RawPort != 0 || asa.QueryPort != 0 || asa.Address != "" {
+		t.Errorf("asa = %+v", asa)
+	}
+	// ASE 3 条转发 + ASA 1 条
+	if len(r.cfg.Forwards) != 4 {
+		t.Errorf("forwards = %+v", r.cfg.Forwards)
+	}
 }
 
 // 本机游戏端口和服务器不同时：查询端口由代理监听，easytier 在上游端口转发，断开后代理释放端口
@@ -208,6 +273,34 @@ func TestJoinEmptyRoom(t *testing.T) {
 	}
 	if running, _ := r.Running(); running {
 		t.Error("房间里没有服务器时不应启动 easytier")
+	}
+}
+
+func TestBuildConfigASA(t *testing.T) {
+	res := &arkfgf.JoinResult{NetworkName: "ark-1", Credential: testCred, Peers: []string{"tcp://et.arkfgf.com:11010"},
+		ServerIP: "10.126.126.1",
+		Servers: []arkfgf.JoinServer{
+			{Key: "1", GamePort: 7777, QueryPort: 27015},
+			{Key: "2", Game: arkfgf.GameASA, GamePort: 7787},
+		}}
+	cfg := BuildConfig(res, []Ports{{Game: 7777, Raw: 7778, Query: 27015}, {Game: 7797}})
+	if err := cfg.Validate(); err != nil {
+		t.Fatal(err)
+	}
+	want := []easytier.Forward{
+		{Proto: "udp", LocalPort: 7777, RemoteIP: "10.126.126.1", RemotePort: 7777},
+		{Proto: "udp", LocalPort: 7778, RemoteIP: "10.126.126.1", RemotePort: 7778},
+		{Proto: "udp", LocalPort: 27015, RemoteIP: "10.126.126.1", RemotePort: 27015},
+		// ASA 只转发游戏端口，没有 L+1 和查询端口
+		{Proto: "udp", LocalPort: 7797, RemoteIP: "10.126.126.1", RemotePort: 7787},
+	}
+	if len(cfg.Forwards) != len(want) {
+		t.Fatalf("forwards = %+v", cfg.Forwards)
+	}
+	for i := range want {
+		if cfg.Forwards[i] != want[i] {
+			t.Errorf("forward %d = %+v, want %+v", i, cfg.Forwards[i], want[i])
+		}
 	}
 }
 
@@ -296,6 +389,14 @@ func joinBodyMulti(name string) string {
 		{"key":"2","name":"` + name + ` B","map":"Ragnarok","online":true,"game_port":7779,"query_port":27017}]}`
 }
 
+// joinBodyMixed 返回一个房间里有一台 ASE（不带 game 字段，旧版网站）和一台 ASA 的加入响应
+func joinBodyMixed() string {
+	return `{"room":{"id":12,"name":"混合"},"network_name":"ark-0123456789abcdef","credential":"` + testCred + `",
+		"credential_expires_at":1797600000,"peers":["tcp://127.0.0.1:21010"],"server_ip":"10.126.126.1",
+		"servers":[{"key":"1","name":"孤岛","map":"TheIsland","online":true,"game_port":7777,"query_port":27015},
+		{"key":"2","name":"飞升","map":"TheIsland_WP","game":"asa","online":true,"game_port":7787,"query_port":0}]}`
+}
+
 func newTestManager(t *testing.T, h http.HandlerFunc, r *fakeRunner, unauthorized func()) *Manager {
 	t.Helper()
 	srv := httptest.NewServer(h)
@@ -310,7 +411,11 @@ func newTestManager(t *testing.T, h http.HandlerFunc, r *fakeRunner, unauthorize
 		PickPorts: func(s []ServerPorts) ([]Ports, error) {
 			out := make([]Ports, len(s))
 			for i, p := range s {
-				out[i] = Ports{Game: p.Game, Raw: p.Game + 1, Query: p.Query}
+				if p.ASA {
+					out[i] = Ports{Game: p.Game}
+				} else {
+					out[i] = Ports{Game: p.Game, Raw: p.Game + 1, Query: p.Query}
+				}
 			}
 			return out, nil
 		},

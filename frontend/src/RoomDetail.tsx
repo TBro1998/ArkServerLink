@@ -3,7 +3,7 @@ import { Clipboard } from "@wailsio/runtime";
 import { RoomService } from "../bindings/arkfgf.com/link";
 import type { RoomDetail } from "../bindings/arkfgf.com/link/internal/arkfgf/models";
 import { Phase, type Status } from "../bindings/arkfgf.com/link/internal/session/models";
-import { isActive, LockIcon, phaseLabel, phaseTone, SteamIcon, type LoginProps } from "./shared";
+import { ASABadge, hasASA, isActive, isASA, LockIcon, phaseLabel, phaseTone, SteamIcon, type LoginProps } from "./shared";
 import { ago, errText, mapName, rate, region } from "./format";
 
 type Props = LoginProps & {
@@ -74,6 +74,7 @@ export function RoomDetailPane(props: Props) {
   }
 
   const where = region(detail.country, detail.province);
+  const allASA = (detail.servers?.length ?? 0) > 0 && detail.servers!.every((sv) => isASA(sv.game));
   const modList = detail.mod_list?.length ? detail.mod_list : (detail.mods ?? []).map((m) => ({ id: m, title: "" }));
 
   return (
@@ -85,6 +86,7 @@ export function RoomDetailPane(props: Props) {
             {detail.name || `房间 #${detail.id}`}
           </h1>
           <div className="room-sub">
+            {hasASA(detail.servers) && <ASABadge />}
             <span className={`status-dot ${detail.online ? "ok" : "idle"}`} />
             {detail.online ? "在线" : `离线${detail.last_seen ? ` · ${ago(detail.last_seen)}在线` : ""}`}
             <span className="sep" />
@@ -135,7 +137,11 @@ export function RoomDetailPane(props: Props) {
         ) : (
           <div className="join-row">
             <p className="muted">
-              {detail.password ? "这台服务器设有密码，进服时需要输入服主提供的密码。" : "加入后点「进入游戏」即可直接进服。"}
+              {detail.password
+                ? "这台服务器设有密码，进服时需要输入服主提供的密码。"
+                : allASA
+                  ? "加入后在 ASA 的控制台里输入助手给出的命令即可进服。"
+                  : "加入后点「进入游戏」即可直接进服。"}
             </p>
             <button className="primary big" onClick={() => (busyElsewhere ? setConfirmSwitch(true) : join())}>
               {busyElsewhere ? "切换到这个房间" : "加入"}
@@ -156,6 +162,7 @@ export function RoomDetailPane(props: Props) {
                 {sv.password && <LockIcon />}
                 {sv.name}
               </span>
+              {isASA(sv.game) && <ASABadge />}
               <span className="muted small-text">
                 {mapName(sv.map)} · {sv.pvp ? "PvP" : "PvE"}
               </span>
@@ -266,6 +273,9 @@ function ConnectionCard({ status, onRetry, login, loggingIn }: Props & { onRetry
   const showCommand = !failed && servers.length > 0;
   const connected = status.phase === Phase.PhaseConnected;
   const multi = servers.length > 1;
+  // ASE 通过 Steam 收藏进服，ASA 只能在游戏控制台里用 open 命令进服，房间里可能两种都有
+  const anyASE = servers.some((sv) => !isASA(sv.game));
+  const anyASA = servers.some((sv) => isASA(sv.game));
 
   const copy = async (key: string, command: string) => {
     await Clipboard.SetText(command);
@@ -325,36 +335,61 @@ function ConnectionCard({ status, onRetry, login, loggingIn }: Props & { onRetry
       {showCommand && (
         <>
           {multi && <p className="muted small-text">这个房间有 {servers.length} 台服务器，都已经连好，选一台进入：</p>}
-          {servers.map((sv) => (
-            <div key={sv.key} className="server-entry">
-              {multi && (
-                <div className="server-entry-head">
-                  <b>{sv.name || `服务器 ${sv.key}`}</b>
-                  {sv.map && <span className="muted small-text">{mapName(sv.map)}</span>}
-                </div>
-              )}
-              <div className="command">
-                <code>{sv.address}</code>
-                <div className="btns">
-                  <button className={copied === sv.key ? "ok small" : "ghost small"} onClick={() => copy(sv.key, sv.address)}>
-                    {copied === sv.key ? "已复制" : "复制地址"}
-                  </button>
-                  {connected && (
-                    <button className="primary small" onClick={() => enter(sv.key)} disabled={entering !== ""}>
-                      {entering === sv.key ? "正在启动 ARK…" : "进入游戏"}
-                    </button>
-                  )}
-                </div>
+          {servers.map((sv) => {
+            const asa = isASA(sv.game);
+            return (
+              <div key={sv.key} className="server-entry">
+                {(multi || asa) && (
+                  <div className="server-entry-head">
+                    {multi && <b>{sv.name || `服务器 ${sv.key}`}</b>}
+                    {asa && <ASABadge />}
+                    {multi && sv.map && <span className="muted small-text">{mapName(sv.map)}</span>}
+                  </div>
+                )}
+                {asa ? (
+                  // ASA 没有 Steam 查询端口，不能用收藏或 steam://connect，只给控制台命令
+                  <div className="command">
+                    <code>{sv.command}</code>
+                    <div className="btns">
+                      <button className={copied === sv.key ? "ok small" : "ghost small"} onClick={() => copy(sv.key, sv.command)}>
+                        {copied === sv.key ? "已复制" : "复制命令"}
+                      </button>
+                    </div>
+                  </div>
+                ) : (
+                  <div className="command">
+                    <code>{sv.address}</code>
+                    <div className="btns">
+                      <button className={copied === sv.key ? "ok small" : "ghost small"} onClick={() => copy(sv.key, sv.address)}>
+                        {copied === sv.key ? "已复制" : "复制地址"}
+                      </button>
+                      {connected && (
+                        <button className="primary small" onClick={() => enter(sv.key)} disabled={entering !== ""}>
+                          {entering === sv.key ? "正在启动 ARK…" : "进入游戏"}
+                        </button>
+                      )}
+                    </div>
+                  </div>
+                )}
               </div>
-            </div>
-          ))}
+            );
+          })}
           {enterHint && <p className="ok-text small-text">{enterHint}</p>}
           {enterError && <p className="bad small-text">{enterError}</p>}
-          <p className="muted small-text">
-            {connected
-              ? "「进入游戏」会把服务器加入 Steam 收藏，并通过 Steam 启动 ARK。进入主菜单后点「加入方舟」，切到「收藏」，选这台服务器加入。也可以自己在 Steam 的「查看 → 游戏服务器 → 收藏」里添加上面的地址。进服期间请保持助手运行。"
-              : "显示「已直连」后，点「进入游戏」即可进服。"}
-          </p>
+          {anyASE && (
+            <p className="muted small-text">
+              {connected
+                ? "「进入游戏」会把服务器加入 Steam 收藏，并通过 Steam 启动 ARK。进入主菜单后点「加入方舟」，切到「收藏」，选这台服务器加入。也可以自己在 Steam 的「查看 → 游戏服务器 → 收藏」里添加上面的地址。进服期间请保持助手运行。"
+                : "显示「已直连」后，点「进入游戏」即可进服。"}
+            </p>
+          )}
+          {anyASA && (
+            <p className="muted small-text">
+              {connected
+                ? "ASA（生存飞升）服务器不能从 Steam 收藏或服务器列表进入：打开 ASA，在主菜单按 Tab 打开控制台，粘贴上面的命令后回车即可进服。进服期间请保持助手运行。"
+                : "ASA（生存飞升）服务器：显示「已直连」后，在游戏主菜单按 Tab 打开控制台，粘贴上面的命令回车进服。"}
+            </p>
+          )}
         </>
       )}
 

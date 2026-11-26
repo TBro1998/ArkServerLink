@@ -105,9 +105,63 @@ func TestJoin(t *testing.T) {
 	if s := res.Servers[1]; s.Key != "5" || s.Map != "Ragnarok" || s.Online || s.GamePort != 7779 || s.QueryPort != 27017 {
 		t.Errorf("server = %+v", s)
 	}
+	// 没有 game 字段（旧版网站）按 ASE
+	if res.Servers[0].Game != GameASE || res.Servers[1].Game != GameASE {
+		t.Errorf("servers = %+v", res.Servers)
+	}
 
 	if _, err := c.Join(context.Background(), "", 12); !IsUnauthorized(err) {
 		t.Errorf("没有令牌应视为未登录: %v", err)
+	}
+}
+
+// ASA 服务器：game 为 asa，没有查询端口；房间详情和房间列表里的服务器也带 game
+func TestJoinASA(t *testing.T) {
+	c := newTestServer(t, func(w http.ResponseWriter, r *http.Request) {
+		switch r.URL.Path {
+		case "/api/v1/link/rooms/12/join":
+			w.Write([]byte(`{"room":{"id":12,"name":"飞升"},"network_name":"ark-0123456789abcdef","credential":"abc=",
+				"credential_expires_at":1797600000,"peers":["tcp://et.arkfgf.com:11010"],"server_ip":"10.126.126.1",
+				"servers":[{"key":"1","name":"A","map":"TheIsland","game":"ase","online":true,"game_port":7777,"query_port":27015},
+				{"key":"2","name":"B","map":"TheIsland_WP","game":"asa","online":true,"game_port":7787,"query_port":0},
+				{"key":"3","name":"C","map":"ScorchedEarth_WP","game":"ASA","online":true,"game_port":7789,"query_port":0},
+				{"key":"4","name":"D","map":"TheIsland","game":"","online":true,"game_port":7791,"query_port":27017}]}`))
+		case "/api/v1/link/rooms/12":
+			w.Write([]byte(`{"id":12,"name":"飞升","servers":[{"name":"A","map":"TheIsland"},{"name":"B","map":"TheIsland_WP","game":"asa"}]}`))
+		case "/api/v1/link/rooms":
+			w.Write([]byte(`{"items":[{"id":12,"name":"飞升","servers":[{"name":"A"},{"name":"B","game":"asa"}]}],"total":1,"page":1,"pages":1}`))
+		default:
+			w.WriteHeader(http.StatusNotFound)
+		}
+	})
+	res, err := c.Join(context.Background(), "jwt-1", 12)
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := []Game{GameASE, GameASA, GameASA, GameASE}
+	for i, g := range want {
+		if res.Servers[i].Game != g {
+			t.Errorf("server %d game = %q, want %q", i, res.Servers[i].Game, g)
+		}
+	}
+	if s := res.Servers[1]; s.GamePort != 7787 || s.QueryPort != 0 {
+		t.Errorf("server = %+v", s)
+	}
+
+	d, err := c.GetRoom(context.Background(), 12)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(d.Servers) != 2 || d.Servers[0].Game != GameASE || d.Servers[1].Game != GameASA {
+		t.Errorf("servers = %+v", d.Servers)
+	}
+
+	l, err := c.ListRooms(context.Background(), "", "", 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if s := l.Items[0].Servers; len(s) != 2 || s[0].Game != GameASE || s[1].Game != GameASA {
+		t.Errorf("servers = %+v", s)
 	}
 }
 

@@ -8,13 +8,14 @@ import (
 )
 
 // Ports 是本机用来转发的三个 UDP 端口：L→game_port、L+1→game_port+1、Q→query_port。
+// ASA 服务器只转发 L→game_port：ASA 不用 game_port+1，也没有 Steam 查询端口，Raw 和 Query 都是 0。
 //
 // Steam 进服（收藏、steam://connect）先向 Q 查询 A2S_INFO，再连「127.0.0.1 + 回复里的游戏端口」，
 // 回复里是服务器自己的 game_port。L 和 game_port 不同时（玩家电脑上 7777 被占用），
 // Q 由助手的查询代理监听，把回复里的游戏端口改成 L 后交给 Steam；easytier 改为在 Upstream 上转发查询端口。
 type Ports struct {
 	Game     int // L
-	Raw      int // L+1
+	Raw      int // L+1；ASA 服务器为 0
 	Query    int // Q；服务器查询端口与游戏端口重叠时为 0（不单独转发）
 	Upstream int // 需要查询代理时 easytier 转发查询端口用的本机端口，不需要时为 0
 }
@@ -60,27 +61,11 @@ func PickPorts(gamePort, queryPort int) (Ports, error) {
 }
 
 func pickPorts(gamePort, queryPort int, free func(int) bool, random func() (int, error)) (Ports, error) {
-	if gamePort <= 0 || gamePort >= 65535 {
-		return Ports{}, fmt.Errorf("服务器游戏端口无效: %d", gamePort)
+	l, err := pickGamePort(gamePort, true, free, random)
+	if err != nil {
+		return Ports{}, err
 	}
-	var p Ports
-	if free(gamePort) && free(gamePort+1) {
-		p.Game = gamePort
-	} else {
-		for i := 0; i < 50 && p.Game == 0; i++ {
-			l, err := random()
-			if err != nil {
-				return Ports{}, err
-			}
-			if l < 65535 && free(l) && free(l+1) {
-				p.Game = l
-			}
-		}
-		if p.Game == 0 {
-			return Ports{}, errors.New("找不到两个相邻的空闲 UDP 端口")
-		}
-	}
-	p.Raw = p.Game + 1
+	p := Ports{Game: l, Raw: l + 1}
 
 	if queryPort <= 0 || queryPort == gamePort || queryPort == gamePort+1 {
 		return p, nil
@@ -103,6 +88,39 @@ func pickPorts(gamePort, queryPort int, free func(int) bool, random func() (int,
 	return p, nil
 }
 
+// pickASAPorts 选 ASA 服务器的本机端口：只要一个 L（优先等于 game_port），不需要 L+1 和查询端口。
+func pickASAPorts(gamePort int, free func(int) bool, random func() (int, error)) (Ports, error) {
+	l, err := pickGamePort(gamePort, false, free, random)
+	if err != nil {
+		return Ports{}, err
+	}
+	return Ports{Game: l}, nil
+}
+
+// pickGamePort 选本机游戏端口 L：优先等于 gamePort，被占用时换成随机端口。withRaw 时 L+1 也必须空闲。
+func pickGamePort(gamePort int, withRaw bool, free func(int) bool, random func() (int, error)) (int, error) {
+	if gamePort <= 0 || gamePort >= 65535 {
+		return 0, fmt.Errorf("服务器游戏端口无效: %d", gamePort)
+	}
+	ok := func(l int) bool { return l > 0 && l < 65535 && free(l) && (!withRaw || free(l+1)) }
+	if ok(gamePort) {
+		return gamePort, nil
+	}
+	for range 50 {
+		l, err := random()
+		if err != nil {
+			return 0, err
+		}
+		if ok(l) {
+			return l, nil
+		}
+	}
+	if withRaw {
+		return 0, errors.New("找不到两个相邻的空闲 UDP 端口")
+	}
+	return 0, errors.New("找不到空闲的 UDP 端口")
+}
+
 // randomFree 随机选一个空闲、没被 used 占用的 UDP 端口。
 func randomFree(used, free func(int) bool, random func() (int, error)) (int, error) {
 	for range 50 {
@@ -118,11 +136,15 @@ func randomFree(used, free func(int) bool, random func() (int, error)) (int, err
 }
 
 // ServerPorts 是房间里一台服务器要转发的端口（服务器上的游戏端口和查询端口）。
-type ServerPorts struct{ Game, Query int }
+// ASA 为 true 时只转发游戏端口，Query 不使用。
+type ServerPorts struct {
+	Game, Query int
+	ASA         bool
+}
 
 // PickAllPorts 为房间里的每台服务器各选一组本机端口，按 servers 的顺序返回。
 // 每台服务器仍然优先用和服务器一样的端口；已经分给前面服务器的端口不会再被选中，
-// 所以多台服务器的 L、L+1、Q 两两不重叠。
+// 所以多台服务器的 L、L+1、Q 两两不重叠。ASA 服务器只分一个 L。
 func PickAllPorts(servers []ServerPorts) ([]Ports, error) {
 	return pickAllPorts(servers, udpFree, randomUDPPort)
 }
@@ -135,7 +157,13 @@ func pickAllPorts(servers []ServerPorts, free func(int) bool, random func() (int
 	available := func(p int) bool { return !taken[p] && free(p) }
 	out := make([]Ports, 0, len(servers))
 	for _, s := range servers {
-		p, err := pickPorts(s.Game, s.Query, available, random)
+		var p Ports
+		var err error
+		if s.ASA {
+			p, err = pickASAPorts(s.Game, available, random)
+		} else {
+			p, err = pickPorts(s.Game, s.Query, available, random)
+		}
 		if err != nil {
 			return nil, err
 		}
