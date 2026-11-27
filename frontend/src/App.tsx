@@ -1,10 +1,11 @@
 import { type ReactNode, useCallback, useEffect, useRef, useState } from "react";
 import { Clipboard, Events } from "@wailsio/runtime";
-import { AuthService, RoomService } from "../bindings/arkfgf.com/link";
+import { AuthService, PortalService, RoomService } from "../bindings/arkfgf.com/link";
 import type { AuthState } from "../bindings/arkfgf.com/link/models";
 import type { Room, RoomList } from "../bindings/arkfgf.com/link/internal/arkfgf/models";
 import { Phase, type Status } from "../bindings/arkfgf.com/link/internal/session/models";
-import { AuthChanged, DeeplinkJoin } from "../bindings/events";
+import { AuthChanged, DeeplinkJoin, DeeplinkPortal } from "../bindings/events";
+import { PortalPane, rememberPortal } from "./Portal";
 import { RoomDetailPane } from "./RoomDetail";
 import { ToolsPane } from "./Tools";
 import { errText, mapName } from "./format";
@@ -24,6 +25,7 @@ const idleStatus: Status = {
   message: "",
   error_code: "",
   retry_in: 0,
+  portal_url: "",
 };
 
 export default function App() {
@@ -36,6 +38,8 @@ export default function App() {
   const [view, setView] = useState<View>("rooms");
   // 通过 arkfgf-link:// 链接打开、等待自动加入的房间
   const [autoJoin, setAutoJoin] = useState<number>(0);
+  // 玩家站页选中的地址
+  const [portal, setPortal] = useState("");
 
   // 登录状态
   useEffect(() => {
@@ -73,6 +77,28 @@ export default function App() {
     return off;
   }, []);
 
+  // arkfgf-link://portal?url=…（网站服务器详情页「用联机助手打开」）
+  useEffect(() => {
+    const take = () =>
+      PortalService.TakePending().then((url) => {
+        if (url) {
+          rememberPortal(url);
+          setPortal(url);
+          setView("portal");
+        }
+      });
+    const off = Events.On(DeeplinkPortal, () => take());
+    take();
+    return off;
+  }, []);
+
+  const openPortal = (url: string) => {
+    setPortal(url);
+    setView("portal");
+  };
+  // 联机房的玩家站只在直连后可用
+  const roomPortal = status.phase === Phase.PhaseConnected ? status.portal_url : "";
+
   const login = useCallback(async () => {
     setLoggingIn(true);
     setLoginError("");
@@ -106,6 +132,8 @@ export default function App() {
       </Header>
       {view === "tools" ? (
         <ToolsPane />
+      ) : view === "portal" ? (
+        <PortalPane roomPortal={roomPortal} roomName={status.room_name} selected={portal} onSelect={setPortal} />
       ) : (
         <div className="body">
           <RoomListPane selected={selected} onSelect={setSelected} activeRoom={isActive(status) ? status.room_id : 0} />
@@ -117,6 +145,7 @@ export default function App() {
                 status={status}
                 autoJoin={autoJoin === selected}
                 onAutoJoinDone={() => setAutoJoin(0)}
+                onOpenPortal={openPortal}
                 {...loginProps}
               />
             ) : (
@@ -130,7 +159,7 @@ export default function App() {
   );
 }
 
-type View = "rooms" | "tools";
+type View = "rooms" | "tools" | "portal";
 
 function Header(props: LoginProps & { logout: () => void; status: Status; onOpenRoom: (id: number) => void; view: View; onView: (v: View) => void; children?: ReactNode }) {
   const { auth, loggingIn, login, cancelLogin, logout, status, onOpenRoom, view, onView, children } = props;
@@ -145,6 +174,9 @@ function Header(props: LoginProps & { logout: () => void; status: Status; onOpen
       <nav className="nav">
         <button className={view === "rooms" ? "on" : ""} onClick={() => onView("rooms")}>
           联机大厅
+        </button>
+        <button className={view === "portal" ? "on" : ""} onClick={() => onView("portal")}>
+          玩家站
         </button>
         <button className={view === "tools" ? "on" : ""} onClick={() => onView("tools")}>
           游戏工具

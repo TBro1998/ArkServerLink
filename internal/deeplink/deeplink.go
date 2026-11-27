@@ -43,3 +43,36 @@ func FindJoin(args []string) (int64, bool) {
 	}
 	return 0, false
 }
+
+// ParsePortal 解析 arkfgf-link://portal?url=<玩家站地址>（网站服务器详情页「用联机助手打开」），
+// 返回玩家站地址；不是合法的链接或地址不是 http(s) 时返回 false
+func ParsePortal(raw string) (string, bool) {
+	raw = strings.Trim(strings.TrimSpace(raw), `"'`)
+	u, err := url.Parse(raw)
+	if err != nil || !strings.EqualFold(u.Scheme, Scheme) {
+		return "", false
+	}
+	path := u.Opaque
+	if path == "" {
+		path = u.Host + u.Path
+	}
+	if before, _, _ := strings.Cut(path, "?"); !strings.EqualFold(strings.Trim(before, "/"), "portal") {
+		return "", false
+	}
+	target := u.Query().Get("url")
+	t, err := url.Parse(target)
+	if err != nil || (t.Scheme != "http" && t.Scheme != "https") || t.Host == "" || t.User != nil || len(target) > 512 {
+		return "", false
+	}
+	return t.String(), true
+}
+
+// FindPortal 在命令行参数里找打开玩家站的链接
+func FindPortal(args []string) (string, bool) {
+	for _, a := range args {
+		if u, ok := ParsePortal(a); ok {
+			return u, true
+		}
+	}
+	return "", false
+}

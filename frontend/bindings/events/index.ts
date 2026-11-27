@@ -24,6 +24,11 @@ export const ClickerChanged = "clicker:changed";
 export const DeeplinkJoin = "deeplink:join";
 
 /**
+ * Name of the custom event "deeplink:portal".
+ */
+export const DeeplinkPortal = "deeplink:portal";
+
+/**
  * Name of the custom event "update:changed".
  */
 export const UpdateChanged = "update:changed";

@@ -646,3 +646,41 @@ func TestJoinWithoutRunner(t *testing.T) {
 		t.Errorf("err = %v", err)
 	}
 }
+
+// 房间开启了玩家站：多转发一个 TCP 端口，状态里给出本机地址；端口被占用时换一个
+func TestJoinWithPortal(t *testing.T) {
+	r := &fakeRunner{}
+	body := strings.Replace(joinBodyMulti("站"), `"servers":[`, `"portal_port":8090,"servers":[`, 1)
+	m := newTestManager(t, func(w http.ResponseWriter, _ *http.Request) { w.Write([]byte(body)) }, r, nil)
+	m.opt.PickTCPPort = func(preferred int, taken map[int]bool) (int, error) {
+		if preferred != 8090 || !taken[7777] {
+			t.Errorf("PickTCPPort(%d, %v)", preferred, taken)
+		}
+		return 18090, nil
+	}
+	if err := m.Join(12, ""); err != nil {
+		t.Fatal(err)
+	}
+	st := waitPhase(t, m, PhaseConnecting)
+	if st.PortalURL != "http://127.0.0.1:18090" {
+		t.Errorf("portal_url = %q", st.PortalURL)
+	}
+	last := r.cfg.Forwards[len(r.cfg.Forwards)-1]
+	if len(r.cfg.Forwards) != 7 || last != (easytier.Forward{Proto: "tcp", LocalPort: 18090, RemoteIP: "10.126.126.1", RemotePort: 8090}) {
+		t.Errorf("forwards = %+v", r.cfg.Forwards)
+	}
+}
+
+func TestPickTCPPort(t *testing.T) {
+	free := func(p int) bool { return p != 8090 }
+	random := func() (int, error) { return 40000, nil }
+	if p, _ := pickTCPPort(8091, nil, free, random); p != 8091 {
+		t.Errorf("空闲时应当用同一个端口: %d", p)
+	}
+	if p, _ := pickTCPPort(8090, nil, free, random); p != 40000 {
+		t.Errorf("被占用时应当换随机端口: %d", p)
+	}
+	if p, _ := pickTCPPort(8091, map[int]bool{8091: true}, free, random); p != 40000 {
+		t.Errorf("已经分给游戏转发时应当换: %d", p)
+	}
+}

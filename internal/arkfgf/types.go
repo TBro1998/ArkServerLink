@@ -34,11 +34,13 @@ type Room struct {
 	Tags        []string `json:"tags"`
 	QQGroup     string   `json:"qq_group"`
 	Discord     string   `json:"discord"`
-	Online      bool     `json:"online"`
-	LastSeen    UnixTime `json:"last_seen"`
-	CreatedAt   UnixTime `json:"created_at"`
-	Country     string   `json:"country"`
-	Province    string   `json:"province"`
+	// 服主开启了玩家站（公告、服务器状态、商店），加入房间后可以在助手里查看
+	Portal    bool     `json:"portal"`
+	Online    bool     `json:"online"`
+	LastSeen  UnixTime `json:"last_seen"`
+	CreatedAt UnixTime `json:"created_at"`
+	Country   string   `json:"country"`
+	Province  string   `json:"province"`
 	// 房间里的服务器（一个房间 = 一个 Commander，可以有多台）；上面的地图、人数、倍率等是汇总值
 	Servers []RoomServer `json:"servers"`
 }
@@ -124,6 +126,8 @@ type JoinResult struct {
 	ServerIP            string   `json:"server_ip"`
 	// 房间里的全部服务器：同一个虚拟 IP，靠端口区分，客户端为每台服务器各转发一组端口
 	Servers []JoinServer `json:"servers"`
+	// 服主玩家站在 ServerIP 上的 TCP 端口，没有开启时为 0。客户端把本机一个 TCP 端口转发过去
+	PortalPort int `json:"portal_port"`
 }
 
 // JoinServer 是加入响应里的一台服务器。Key 在房间内唯一（Commander 里的服务器 ID）。

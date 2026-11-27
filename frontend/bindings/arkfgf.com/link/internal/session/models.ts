@@ -93,4 +93,9 @@ export interface Status {
      * 等待重试的剩余秒数
      */
     "retry_in": number;
+
+    /**
+     * 服主的玩家站在本机的地址（http://127.0.0.1:<端口>），房间没有开启玩家站时为空。直连后才能打开
+     */
+    "portal_url": string;
 }

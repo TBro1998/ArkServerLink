@@ -35,3 +35,30 @@ func TestFindJoin(t *testing.T) {
 		t.Error("没有链接时应返回 false")
 	}
 }
+
+func TestParsePortal(t *testing.T) {
+	ok := map[string]string{
+		"arkfgf-link://portal?url=https%3A%2F%2Fark.example.com":       "https://ark.example.com",
+		"arkfgf-link://portal/?url=http%3A%2F%2F1.2.3.4%3A8090":        "http://1.2.3.4:8090",
+		`"arkfgf-link://portal?url=https%3A%2F%2Fark.example.com%2Fa"`: "https://ark.example.com/a",
+	}
+	for in, want := range ok {
+		if got, valid := ParsePortal(in); !valid || got != want {
+			t.Errorf("ParsePortal(%q) = %q, %v", in, got, valid)
+		}
+	}
+	for _, bad := range []string{
+		"arkfgf-link://portal?url=javascript%3Aalert(1)",
+		"arkfgf-link://portal?url=file%3A%2F%2F%2Fc%3A%2F",
+		"arkfgf-link://portal",
+		"arkfgf-link://join/12",
+		"https://portal?url=https%3A%2F%2Fx.com",
+	} {
+		if _, valid := ParsePortal(bad); valid {
+			t.Errorf("ParsePortal(%q) 应当无效", bad)
+		}
+	}
+	if u, ok := FindPortal([]string{"--x", "arkfgf-link://portal?url=https%3A%2F%2Fa.com"}); !ok || u != "https://a.com" {
+		t.Errorf("FindPortal = %q %v", u, ok)
+	}
+}

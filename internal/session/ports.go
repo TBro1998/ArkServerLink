@@ -176,3 +176,48 @@ func pickAllPorts(servers []ServerPorts, free func(int) bool, random func() (int
 	}
 	return out, nil
 }
+
+// tcpFree 判断本机 TCP 端口是否空闲（127.0.0.1 和 0.0.0.0 都要能监听）
+func tcpFree(port int) bool {
+	if port <= 0 || port > 65535 {
+		return false
+	}
+	for _, host := range []string{"127.0.0.1", "0.0.0.0"} {
+		l, err := net.Listen("tcp4", net.JoinHostPort(host, strconv.Itoa(port)))
+		if err != nil {
+			return false
+		}
+		l.Close()
+	}
+	return true
+}
+
+func randomTCPPort() (int, error) {
+	l, err := net.Listen("tcp4", "127.0.0.1:0")
+	if err != nil {
+		return 0, err
+	}
+	defer l.Close()
+	return l.Addr().(*net.TCPAddr).Port, nil
+}
+
+// PickTCPPort 为玩家站选本机 TCP 端口：优先和服主的端口一样，被占用（或已经分给游戏转发）时换成随机端口
+func PickTCPPort(preferred int, taken map[int]bool) (int, error) {
+	return pickTCPPort(preferred, taken, tcpFree, randomTCPPort)
+}
+
+func pickTCPPort(preferred int, taken map[int]bool, free func(int) bool, random func() (int, error)) (int, error) {
+	if !taken[preferred] && free(preferred) {
+		return preferred, nil
+	}
+	for range 20 {
+		p, err := random()
+		if err != nil {
+			return 0, err
+		}
+		if !taken[p] {
+			return p, nil
+		}
+	}
+	return 0, errors.New("找不到空闲的 TCP 端口")
+}

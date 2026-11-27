@@ -18,6 +18,7 @@ declare module "@wailsio/runtime" {
             "auth:changed": main$0.AuthState;
             "clicker:changed": clicker$0.State;
             "deeplink:join": number;
+            "deeplink:portal": string;
             "update:changed": main$0.UpdateState;
         }
     }

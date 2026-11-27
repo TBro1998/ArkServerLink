@@ -9,6 +9,7 @@ import (
 	"arkfgf.com/link/internal/auth"
 	"arkfgf.com/link/internal/clicker"
 	"arkfgf.com/link/internal/deeplink"
+	"arkfgf.com/link/internal/portal"
 	"arkfgf.com/link/internal/steam"
 	"github.com/wailsapp/wails/v3/pkg/application"
 	"github.com/wailsapp/wails/v3/pkg/events"
@@ -25,6 +26,7 @@ const version = "0.1.0"
 const (
 	EventAuthChanged    = "auth:changed"    // 登录状态变化（登录、退出、令牌失效）
 	EventDeepLinkJoin   = "deeplink:join"   // 通过 arkfgf-link://join/<id> 请求加入房间
+	EventDeepLinkPortal = "deeplink:portal" // 通过 arkfgf-link://portal?url=<地址> 请求打开玩家站
 	EventUpdateChanged  = "update:changed"  // 自动更新状态变化（检查结果、下载进度）
 	EventClickerChanged = "clicker:changed" // 连点器开关、暂停状态变化
 )
@@ -32,6 +34,7 @@ const (
 func init() {
 	application.RegisterEvent[AuthState](EventAuthChanged)
 	application.RegisterEvent[int64](EventDeepLinkJoin)
+	application.RegisterEvent[string](EventDeepLinkPortal)
 	application.RegisterEvent[UpdateState](EventUpdateChanged)
 	application.RegisterEvent[clicker.State](EventClickerChanged)
 }
@@ -64,10 +67,13 @@ func main() {
 	roomSvc := &RoomService{api: api, auth: authSvc}
 	updateSvc := newUpdateService(api, version)
 	toolsSvc := newToolsService()
+	portalSvc := &PortalService{client: portal.New(version)}
 
 	// 首次启动就是被链接唤起的（Windows 上链接是第一个参数）
 	launchID, _ := deeplink.FindJoin(os.Args[1:])
 	roomSvc.pendingJoin = launchID
+	launchPortal, _ := deeplink.FindPortal(os.Args[1:])
+	portalSvc.pending = launchPortal
 
 	app := application.New(application.Options{
 		Name:        "ARKFGF 联机助手",
@@ -77,6 +83,7 @@ func main() {
 			application.NewService(roomSvc),
 			application.NewService(updateSvc),
 			application.NewService(toolsSvc),
+			application.NewService(portalSvc),
 		},
 		Assets: application.AssetOptions{
 			Handler: application.AssetFileServerFS(assets),
@@ -89,6 +96,9 @@ func main() {
 				if id, ok := deeplink.FindJoin(data.Args); ok {
 					roomSvc.requestJoin(id)
 				}
+				if u, ok := deeplink.FindPortal(data.Args); ok {
+					portalSvc.requestOpen(u)
+				}
 				focusMainWindow()
 			},
 		},
@@ -99,6 +109,14 @@ func main() {
 
 	// macOS / Linux 通过系统事件传链接。Windows 也会发这个事件，但链接已在上面从参数里取过
 	app.Event.OnApplicationEvent(events.Common.ApplicationLaunchedWithUrl, func(e *application.ApplicationEvent) {
+		if u, ok := deeplink.ParsePortal(e.Context().URL()); ok {
+			if u == launchPortal {
+				launchPortal = ""
+				return
+			}
+			portalSvc.requestOpen(u)
+			return
+		}
 		id, ok := deeplink.ParseJoin(e.Context().URL())
 		if ok && id == launchID {
 			launchID = 0

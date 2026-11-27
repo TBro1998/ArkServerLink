@@ -101,6 +101,11 @@ export interface Room {
     "tags": string[] | null;
     "qq_group": string;
     "discord": string;
+
+    /**
+     * 服主开启了玩家站（公告、服务器状态、商店），加入房间后可以在助手里查看
+     */
+    "portal": boolean;
     "online": boolean;
     "last_seen": UnixTime;
     "created_at": UnixTime;
@@ -133,6 +138,11 @@ export interface RoomDetail {
     "tags": string[] | null;
     "qq_group": string;
     "discord": string;
+
+    /**
+     * 服主开启了玩家站（公告、服务器状态、商店），加入房间后可以在助手里查看
+     */
+    "portal": boolean;
     "online": boolean;
     "last_seen": UnixTime;
     "created_at": UnixTime;

@@ -11,6 +11,7 @@ type Props = LoginProps & {
   status: Status;
   autoJoin: boolean;
   onAutoJoinDone: () => void;
+  onOpenPortal: (url: string) => void;
 };
 
 // 房间详情。一个房间（一个 Commander）里可以有多台服务器：加入一次（一个凭证）就能连所有服务器。
@@ -182,6 +183,10 @@ export function RoomDetailPane(props: Props) {
       )}
 
       {detail.description && <p className="desc">{detail.description}</p>}
+
+      {detail.portal && !(mine && status.phase === Phase.PhaseConnected) && (
+        <p className="muted small-text">服主开启了玩家站（公告、服务器状态、商店），加入房间并直连后可以在助手里查看。</p>
+      )}
 
       {(detail.qq_group || detail.discord) && (
         <div className="contacts">
@@ -402,7 +407,7 @@ function LoginPrompt({ autoJoin, loggingIn, loginError, login, cancelLogin }: Pr
 }
 
 // 连接状态：加入、打洞、直连、失败。每台服务器的进服方式在下面的服务器列表里
-function ConnectionCard({ status, onRetry, login, loggingIn }: Props & { onRetry: () => void }) {
+function ConnectionCard({ status, onRetry, login, loggingIn, onOpenPortal }: Props & { onRetry: () => void }) {
   const tone = phaseTone(status.phase);
   const failed = status.phase === Phase.PhaseError;
   const servers = status.servers ?? [];
@@ -447,6 +452,15 @@ function ConnectionCard({ status, onRetry, login, loggingIn }: Props & { onRetry
         {status.message}
         {status.retry_in > 0 && <span className="muted">（{status.retry_in} 秒后重试）</span>}
       </p>
+
+      {connected && status.portal_url && (
+        <div className="enter-row">
+          <span className="muted small-text">服主开启了玩家站：公告、服务器状态和商店。</span>
+          <button className="ghost small" onClick={() => onOpenPortal(status.portal_url)}>
+            查看玩家站
+          </button>
+        </div>
+      )}
 
       {showHints && (
         <>

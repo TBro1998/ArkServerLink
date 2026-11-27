@@ -92,6 +92,8 @@ type Status struct {
 	Message   string         `json:"message"`
 	ErrorCode string         `json:"error_code"`
 	RetryIn   int            `json:"retry_in"` // 等待重试的剩余秒数
+	// 服主的玩家站在本机的地址（http://127.0.0.1:<端口>），房间没有开启玩家站时为空。直连后才能打开
+	PortalURL string `json:"portal_url"`
 }
 
 // Options 配置 Manager。零值字段使用默认值。
@@ -105,6 +107,8 @@ type Options struct {
 	Poll           time.Duration // 读取 peer 表的间隔，默认 2 秒
 	MaxRetries     int           // 凭证不足（503）时的自动重试次数，默认 3
 	PickPorts      func(servers []ServerPorts) ([]Ports, error)
+	// PickTCPPort 为玩家站选一个本机 TCP 端口（优先和服主一样），taken 是已经分给游戏转发的端口
+	PickTCPPort func(preferred int, taken map[int]bool) (int, error)
 }
 
 // Manager 管理当前的联机会话。
@@ -124,6 +128,9 @@ type session struct {
 }
 
 func NewManager(opt Options) *Manager {
+	if opt.PickTCPPort == nil {
+		opt.PickTCPPort = PickTCPPort
+	}
 	if opt.Grace == 0 {
 		opt.Grace = 40 * time.Second
 	}
@@ -273,6 +280,20 @@ func (m *Manager) run(ctx context.Context, s *session, id int64) {
 		return
 	}
 	cfg := BuildConfig(res, ports)
+	portalURL := ""
+	if res.PortalPort > 0 && res.PortalPort < 65536 {
+		taken := map[int]bool{}
+		for _, p := range ports {
+			for _, port := range []int{p.Game, p.Raw, p.Query, p.Upstream} {
+				taken[port] = true
+			}
+		}
+		// 玩家站只是附加功能，选不到端口时照常进服
+		if local, err := m.opt.PickTCPPort(res.PortalPort, taken); err == nil {
+			cfg.Forwards = append(cfg.Forwards, easytier.Forward{Proto: "tcp", LocalPort: local, RemoteIP: res.ServerIP, RemotePort: res.PortalPort})
+			portalURL = fmt.Sprintf("http://127.0.0.1:%d", local)
+		}
+	}
 	if err := m.opt.Runner.Start(cfg); err != nil {
 		m.fail(s, CodeLocal, err.Error())
 		return
@@ -307,6 +328,7 @@ func (m *Manager) run(ctx context.Context, s *session, id int64) {
 		}
 		st.LocalPort, st.RawPort, st.QueryPort = ports[0].Game, ports[0].Raw, ports[0].Query
 		st.Command = st.Servers[0].Command
+		st.PortalURL = portalURL
 		st.Message = "正在通过 P2P 打洞连接服务器…"
 	})
 	m.monitor(ctx, s, id, res.ServerIP)

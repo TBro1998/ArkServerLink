@@ -378,3 +378,22 @@ input.text:focus { outline: none; border-color: var(--accent); }
 kbd { font-family: inherit; font-size: 11px; padding: 1px 6px; border-radius: 4px; background: rgba(255, 255, 255, 0.18); }
 .badge.idle { background: var(--panel-2); color: var(--muted); }
 .warn-text { color: var(--warn); line-height: 1.6; }
+
+/* 玩家站 */
+.portal { display: flex; flex-direction: column; gap: 14px; }
+.portal-tabs { flex-wrap: wrap; }
+.portal-list { display: flex; flex-direction: column; gap: 10px; }
+.row.portal-row { flex-direction: row; align-items: center; gap: 4px; padding: 0 6px 0 0; }
+.portal-row-main { flex: 1; min-width: 0; display: flex; flex-direction: column; align-items: flex-start; gap: 5px; padding: 10px; text-align: left; background: transparent; }
+.portal-row-main:hover { background: transparent; }
+.portal-row-main .row-meta { max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.portal-add { display: flex; flex-wrap: wrap; gap: 6px; padding: 10px 12px; border-top: 1px solid var(--line); }
+input.text.portal-input { width: auto; flex: 1; min-width: 140px; }
+.portal-shop { display: flex; flex-direction: column; gap: 10px; }
+.portal-shop-bar { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
+.portal-lines { flex-direction: column; align-items: flex-start; gap: 2px; }
+.portal-price { color: var(--accent-2); }
+.portal .command input.text { width: 64px; }
+.status-dot.busy { background: var(--accent); }
+.portal .room-head { align-items: flex-start; }
+.portal .command code { flex: 1; font-size: 15px; }
