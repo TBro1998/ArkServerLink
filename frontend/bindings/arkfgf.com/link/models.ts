@@ -4,6 +4,36 @@
 // eslint-disable-next-line @typescript-eslint/ban-ts-comment
 // @ts-ignore: Unused imports
 import * as arkfgf$0 from "./internal/arkfgf/models.js";
+// eslint-disable-next-line @typescript-eslint/ban-ts-comment
+// @ts-ignore: Unused imports
+import * as clicker$0 from "./internal/clicker/models.js";
+// eslint-disable-next-line @typescript-eslint/ban-ts-comment
+// @ts-ignore: Unused imports
+import * as graphics$0 from "./internal/graphics/models.js";
+
+/**
+ * ASEGraphicsStatus 是 ASE 画质文件的状态。
+ */
+export interface ASEGraphicsStatus {
+    "found": boolean;
+    "path": string;
+
+    /**
+     * 找不到或读不了文件的原因
+     */
+    "error": string;
+
+    /**
+     * 文件里已生效的选项
+     */
+    "applied": string[] | null;
+    "backup": graphics$0.Backup;
+
+    /**
+     * 游戏开着时改动要重启游戏才生效
+     */
+    "game_running": boolean;
+}
 
 /**
  * AuthState 是登录状态。
@@ -16,6 +46,28 @@ export interface AuthState {
      * 例如暂时连不上网站
      */
     "message": string;
+}
+
+/**
+ * ToolsPrefs 是游戏工具的设置，保存在 %AppData%\ArkServerLink\tools.json。
+ */
+export interface ToolsPrefs {
+    "clicker": clicker$0.Config;
+
+    /**
+     * 上次在 ASA 画质里选的选项
+     */
+    "asa_options": string[] | null;
+
+    /**
+     * 0 表示不调
+     */
+    "gamma": number;
+
+    /**
+     * ASE 的应用方式：ini（默认）或 console
+     */
+    "ase_mode": string;
 }
 
 /**

@@ -14,6 +14,11 @@ import "../github.com/wailsapp/wails/v3/internal/eventcreate.js";
 export const AuthChanged = "auth:changed";
 
 /**
+ * Name of the custom event "clicker:changed".
+ */
+export const ClickerChanged = "clicker:changed";
+
+/**
  * Name of the custom event "deeplink:join".
  */
 export const DeeplinkJoin = "deeplink:join";

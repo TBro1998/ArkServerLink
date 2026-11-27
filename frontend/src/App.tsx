@@ -6,6 +6,7 @@ import type { Room, RoomList } from "../bindings/arkfgf.com/link/internal/arkfgf
 import { Phase, type Status } from "../bindings/arkfgf.com/link/internal/session/models";
 import { AuthChanged, DeeplinkJoin } from "../bindings/events";
 import { RoomDetailPane } from "./RoomDetail";
+import { ToolsPane } from "./Tools";
 import { errText, mapName } from "./format";
 import { ASABadge, hasASA, isActive, LockIcon, phaseLabel, phaseTone, roomMaps, roomMode, SteamIcon, type LoginProps } from "./shared";
 import { UpdateBadge, UpdateDialog, useUpdate } from "./Update";
@@ -32,6 +33,7 @@ export default function App() {
 
   const [status, setStatus] = useState<Status>(idleStatus);
   const [selected, setSelected] = useState<number>(0);
+  const [view, setView] = useState<View>("rooms");
   // 通过 arkfgf-link:// 链接打开、等待自动加入的房间
   const [autoJoin, setAutoJoin] = useState<number>(0);
 
@@ -61,6 +63,7 @@ export default function App() {
     const take = () =>
       RoomService.TakePendingJoin().then((id) => {
         if (id > 0) {
+          setView("rooms");
           setSelected(id);
           setAutoJoin(id);
         }
@@ -91,36 +94,46 @@ export default function App() {
   const loginProps = { auth, loggingIn, loginError, login, cancelLogin };
   const update = useUpdate();
   const [updateOpen, setUpdateOpen] = useState(false);
+  const openRoom = (id: number) => {
+    setView("rooms");
+    setSelected(id);
+  };
 
   return (
     <div className="app">
-      <Header {...loginProps} logout={logout} status={status} onOpenRoom={setSelected}>
+      <Header {...loginProps} logout={logout} status={status} onOpenRoom={openRoom} view={view} onView={setView}>
         <UpdateBadge state={update} onOpen={() => setUpdateOpen(true)} />
       </Header>
-      <div className="body">
-        <RoomListPane selected={selected} onSelect={setSelected} activeRoom={isActive(status) ? status.room_id : 0} />
-        <main className="detail">
-          {selected ? (
-            <RoomDetailPane
-              key={selected}
-              id={selected}
-              status={status}
-              autoJoin={autoJoin === selected}
-              onAutoJoinDone={() => setAutoJoin(0)}
-              {...loginProps}
-            />
-          ) : (
-            <Welcome status={status} onOpenRoom={setSelected} />
-          )}
-        </main>
-      </div>
+      {view === "tools" ? (
+        <ToolsPane />
+      ) : (
+        <div className="body">
+          <RoomListPane selected={selected} onSelect={setSelected} activeRoom={isActive(status) ? status.room_id : 0} />
+          <main className="detail">
+            {selected ? (
+              <RoomDetailPane
+                key={selected}
+                id={selected}
+                status={status}
+                autoJoin={autoJoin === selected}
+                onAutoJoinDone={() => setAutoJoin(0)}
+                {...loginProps}
+              />
+            ) : (
+              <Welcome status={status} onOpenRoom={openRoom} />
+            )}
+          </main>
+        </div>
+      )}
       {updateOpen && update && <UpdateDialog state={update} connected={isActive(status)} onClose={() => setUpdateOpen(false)} />}
     </div>
   );
 }
 
-function Header(props: LoginProps & { logout: () => void; status: Status; onOpenRoom: (id: number) => void; children?: ReactNode }) {
-  const { auth, loggingIn, login, cancelLogin, logout, status, onOpenRoom, children } = props;
+type View = "rooms" | "tools";
+
+function Header(props: LoginProps & { logout: () => void; status: Status; onOpenRoom: (id: number) => void; view: View; onView: (v: View) => void; children?: ReactNode }) {
+  const { auth, loggingIn, login, cancelLogin, logout, status, onOpenRoom, view, onView, children } = props;
   const [menu, setMenu] = useState(false);
   return (
     <header className="topbar">
@@ -129,6 +142,14 @@ function Header(props: LoginProps & { logout: () => void; status: Status; onOpen
         <span className="brand-name">ARKFGF</span>
         <span className="brand-sub">联机助手</span>
       </div>
+      <nav className="nav">
+        <button className={view === "rooms" ? "on" : ""} onClick={() => onView("rooms")}>
+          联机大厅
+        </button>
+        <button className={view === "tools" ? "on" : ""} onClick={() => onView("tools")}>
+          游戏工具
+        </button>
+      </nav>
       {isActive(status) && (
         <button className="session-pill" onClick={() => onOpenRoom(status.room_id)} title="查看当前连接">
           <span className={`dot ${phaseTone(status.phase)}`} />

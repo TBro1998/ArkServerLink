@@ -25,6 +25,15 @@ func FindSteamAPI() (string, error) {
 	return findIn(candidateDirs(dir), os.Stat)
 }
 
+// LibraryDirs 返回本机所有 Steam 库目录（Steam 本体目录在前）。
+func LibraryDirs() ([]string, error) {
+	dir, err := steamPath()
+	if err != nil {
+		return nil, err
+	}
+	return candidateDirs(dir), nil
+}
+
 // candidateDirs 是可能装有 ARK 的 Steam 库目录：Steam 本体目录在前，然后是
 // libraryfolders.vdf 里登记的其他库。
 func candidateDirs(steamPath string) []string {

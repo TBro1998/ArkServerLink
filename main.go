@@ -7,6 +7,7 @@ import (
 
 	"arkfgf.com/link/internal/arkfgf"
 	"arkfgf.com/link/internal/auth"
+	"arkfgf.com/link/internal/clicker"
 	"arkfgf.com/link/internal/deeplink"
 	"arkfgf.com/link/internal/steam"
 	"github.com/wailsapp/wails/v3/pkg/application"
@@ -22,15 +23,17 @@ const version = "0.1.0"
 
 // 发给前端的事件。
 const (
-	EventAuthChanged   = "auth:changed"   // 登录状态变化（登录、退出、令牌失效）
-	EventDeepLinkJoin  = "deeplink:join"  // 通过 arkfgf-link://join/<id> 请求加入房间
-	EventUpdateChanged = "update:changed" // 自动更新状态变化（检查结果、下载进度）
+	EventAuthChanged    = "auth:changed"    // 登录状态变化（登录、退出、令牌失效）
+	EventDeepLinkJoin   = "deeplink:join"   // 通过 arkfgf-link://join/<id> 请求加入房间
+	EventUpdateChanged  = "update:changed"  // 自动更新状态变化（检查结果、下载进度）
+	EventClickerChanged = "clicker:changed" // 连点器开关、暂停状态变化
 )
 
 func init() {
 	application.RegisterEvent[AuthState](EventAuthChanged)
 	application.RegisterEvent[int64](EventDeepLinkJoin)
 	application.RegisterEvent[UpdateState](EventUpdateChanged)
+	application.RegisterEvent[clicker.State](EventClickerChanged)
 }
 
 var mainWindow *application.WebviewWindow
@@ -60,6 +63,7 @@ func main() {
 	}
 	roomSvc := &RoomService{api: api, auth: authSvc}
 	updateSvc := newUpdateService(api, version)
+	toolsSvc := newToolsService()
 
 	// 首次启动就是被链接唤起的（Windows 上链接是第一个参数）
 	launchID, _ := deeplink.FindJoin(os.Args[1:])
@@ -72,6 +76,7 @@ func main() {
 			application.NewService(authSvc),
 			application.NewService(roomSvc),
 			application.NewService(updateSvc),
+			application.NewService(toolsSvc),
 		},
 		Assets: application.AssetOptions{
 			Handler: application.AssetFileServerFS(assets),

@@ -3,14 +3,18 @@
 
 import * as AuthService from "./authservice.js";
 import * as RoomService from "./roomservice.js";
+import * as ToolsService from "./toolsservice.js";
 import * as UpdateService from "./updateservice.js";
 export {
     AuthService,
     RoomService,
+    ToolsService,
     UpdateService
 };
 
 export type {
+    ASEGraphicsStatus,
     AuthState,
+    ToolsPrefs,
     UpdateState
 } from "./models.js";

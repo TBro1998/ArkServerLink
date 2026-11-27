@@ -8,11 +8,15 @@ import type { Events } from "@wailsio/runtime";
 // eslint-disable-next-line @typescript-eslint/ban-ts-comment
 // @ts-ignore: Unused imports
 import type * as main$0 from "../../../../../arkfgf.com/link/models.js";
+// eslint-disable-next-line @typescript-eslint/ban-ts-comment
+// @ts-ignore: Unused imports
+import type * as clicker$0 from "../../../../../arkfgf.com/link/internal/clicker/models.js";
 
 declare module "@wailsio/runtime" {
     namespace Events {
         interface CustomEvents {
             "auth:changed": main$0.AuthState;
+            "clicker:changed": clicker$0.State;
             "deeplink:join": number;
             "update:changed": main$0.UpdateState;
         }
