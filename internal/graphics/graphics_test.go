@@ -37,7 +37,7 @@ func TestPatchInsertsIntoWindowsSection(t *testing.T) {
 		return -1
 	}
 	sec, base, next := idx("[Windows DeviceProfile]"), idx("BaseProfileName="), idx("[WindowsNoEditor DeviceProfile]")
-	begin, cd := idx(beginMark), idx("+CVars=r.CustomDepth=0")
+	begin, cd := idx(beginMark), idx("+CVars=ShowFlag.Materials=0")
 	if !(sec < base && base < begin && begin < cd && cd < next) {
 		t.Fatalf("插入位置不对:\n%s", out)
 	}
@@ -79,6 +79,30 @@ func TestPatchWithoutSection(t *testing.T) {
 	}
 }
 
+func TestOutdatedBlock(t *testing.T) {
+	cat := For(ASE)
+	fresh := Patch(sampleIni, cat, []string{"fog", "underwater"})
+	if Outdated(fresh, cat) || Outdated(sampleIni, cat) {
+		t.Fatal("刚写入的和没写过的都不算过期")
+	}
+	// 旧版本写入的：underwater 用的是 r.CustomDepth=0，还有已经去掉的 translucency
+	old := strings.Replace(fresh, "+CVars=ShowFlag.Materials=0", "+CVars=r.CustomDepth=0", 1)
+	if !Outdated(old, cat) {
+		t.Fatal("参数改过的应当过期")
+	}
+	renamed := strings.Replace(fresh, optionsMark+"fog,underwater", optionsMark+"fog,underwater,translucency", 1)
+	if !Outdated(renamed, cat) {
+		t.Fatal("有已经去掉的选项应当过期")
+	}
+	dir := t.TempDir()
+	p := filepath.Join(dir, "BaseDeviceProfiles.ini")
+	os.WriteFile(p, []byte(renamed), 0o644)
+	ids, outdated, err := ReadApplied(p, cat)
+	if err != nil || !outdated || !reflect.DeepEqual(ids, []string{"fog", "underwater"}) {
+		t.Fatalf("ReadApplied = %v, %v, %v", ids, outdated, err)
+	}
+}
+
 func TestDedupeCVarsKeepsLastValue(t *testing.T) {
 	got := dedupeCVars([]Option{
 		{Lines: []string{"r.A=1", "r.B=1"}},
@@ -112,14 +136,6 @@ func TestCatalogsAreConsistent(t *testing.T) {
 					t.Errorf("%s/%s: 控制台命令 %q 格式不对", g, o.ID, l)
 				}
 			}
-			for _, l := range o.Console {
-				if g == ASA || strings.Contains(l, "|") || strings.Contains(l, "=") || strings.HasPrefix(l, "ShowFlag.") {
-					t.Errorf("%s/%s: 控制台写法 %q 不对（ASA 用 Lines，ShowFlag 不能在控制台改）", g, o.ID, l)
-				}
-			}
-			if o.ConsoleNote != "" && len(o.Console) == 0 {
-				t.Errorf("%s/%s: 没有控制台写法却有说明", g, o.ID)
-			}
 		}
 		for _, p := range cat.Presets {
 			for _, id := range p.Options {
@@ -139,11 +155,6 @@ func TestCommand(t *testing.T) {
 	}
 	if got := Command(cat, nil, 0); got != "" {
 		t.Fatalf("空选择 = %q", got)
-	}
-	// ASE 用 Console，只能写 ini 的选项跳过
-	ase := Command(For(ASE), []string{"lightshafts", "fog", "translucency"}, 0)
-	if ase != "r.LightShafts 0 | r.LightShaftQuality 0" {
-		t.Fatalf("ASE Command = %q", ase)
 	}
 	if GammaCommand(2.5) != "gamma 2.5" || GammaCommand(9) != "" {
 		t.Fatal("GammaCommand 范围不对")
@@ -168,8 +179,8 @@ func TestApplyAndRestoreFile(t *testing.T) {
 	if string(bak) != sampleIni {
 		t.Fatalf("备份不是原文件:\n%s", bak)
 	}
-	if got, _ := ReadApplied(p); !reflect.DeepEqual(got, []string{"sky"}) {
-		t.Fatalf("ReadApplied = %v", got)
+	if got, outdated, _ := ReadApplied(p, cat); !reflect.DeepEqual(got, []string{"sky"}) || outdated {
+		t.Fatalf("ReadApplied = %v, %v", got, outdated)
 	}
 	if err := RestoreFile(p); err != nil {
 		t.Fatal(err)

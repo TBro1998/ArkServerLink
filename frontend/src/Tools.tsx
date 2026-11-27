@@ -9,8 +9,6 @@ import { ClickerChanged } from "../bindings/events";
 import { errText } from "./format";
 
 type Game = "ase" | "asa";
-// 应用方式：ini 只有 ASE 有（长期生效），console 是复制控制台命令（重启游戏恢复）
-type Mode = "ini" | "console";
 
 type ToolID = "graphics" | "clicker";
 
@@ -54,14 +52,12 @@ function GraphicsCard() {
   const [catalogs, setCatalogs] = useState<Record<Game, Catalog | null>>({ ase: null, asa: null });
   const [selected, setSelected] = useState<Record<Game, string[]>>({ ase: [], asa: [] });
   const [gamma, setGamma] = useState(0);
-  const [aseMode, setAseMode] = useState<Mode>("ini");
 
   useEffect(() => {
     Promise.all([ToolsService.GraphicsCatalog("ase"), ToolsService.GraphicsCatalog("asa"), ToolsService.Prefs()]).then(([ase, asa, prefs]) => {
       setCatalogs({ ase, asa });
       setSelected((s) => ({ ...s, asa: prefs.asa_options ?? [] }));
       setGamma(prefs.gamma || 0);
-      setAseMode(prefs.ase_mode === "console" ? "console" : "ini");
     });
   }, []);
 
@@ -70,13 +66,6 @@ function GraphicsCard() {
   const setSel = (ids: string[]) => setSelected((s) => ({ ...s, [game]: ids }));
   const toggle = (id: string) => setSel(sel.includes(id) ? sel.filter((x) => x !== id) : [...sel, id]);
   const activePreset = cat?.presets?.find((p) => sameSet(p.options ?? [], sel))?.id;
-  const mode: Mode = game === "asa" ? "console" : aseMode;
-  const pickMode = (m: Mode) => {
-    setAseMode(m);
-    ToolsService.SetASEMode(m);
-  };
-  // ASE 用控制台时，没有控制台写法的选项只能写进 ini
-  const iniOnly = game === "ase" && mode === "console" ? (cat?.options ?? []).filter((o) => sel.includes(o.id) && !(o.console?.length ?? 0)) : [];
 
   return (
     <section className="tool-card">
@@ -101,19 +90,6 @@ function GraphicsCard() {
         </div>
       ) : (
         <>
-          {game === "ase" && (
-            <div className="presets">
-              <span className="label">应用方式</span>
-              <div className="seg small">
-                <button className={mode === "ini" ? "on" : ""} onClick={() => pickMode("ini")} title="写进 BaseDeviceProfiles.ini，每次启动游戏都生效">
-                  写入 ini（长期生效）
-                </button>
-                <button className={mode === "console" ? "on" : ""} onClick={() => pickMode("console")} title="不改文件，在游戏控制台里执行，重启游戏恢复">
-                  控制台命令（实验性）
-                </button>
-              </div>
-            </div>
-          )}
           <div className="presets">
             <span className="label">一键档位</span>
             {(cat.presets ?? []).map((p) => (
@@ -125,13 +101,20 @@ function GraphicsCard() {
               清空
             </button>
           </div>
-          <OptionGroup title="性能" game={game} mode={mode} options={(cat.options ?? []).filter((o) => o.group === "perf")} selected={sel} onToggle={toggle} />
-          <OptionGroup title="战斗画质" game={game} mode={mode} options={(cat.options ?? []).filter((o) => o.group === "combat")} selected={sel} onToggle={toggle} />
+          <OptionGroup title="性能" options={(cat.options ?? []).filter((o) => o.group === "perf")} selected={sel} onToggle={toggle} />
+          <OptionGroup title="战斗画质" options={(cat.options ?? []).filter((o) => o.group === "combat")} selected={sel} onToggle={toggle} />
           <GammaRow gamma={gamma} setGamma={setGamma} />
-          {mode === "ini" ? (
+          {(cat.options ?? [])
+            .filter((o) => o.tip && sel.includes(o.id))
+            .map((o) => (
+              <p key={o.id} className="small-text warn-text">
+                {o.tip}
+              </p>
+            ))}
+          {game === "ase" ? (
             <ASEApply selected={sel} gamma={gamma} onLoaded={(ids) => setSelected((s) => ({ ...s, ase: s.ase.length ? s.ase : ids }))} />
           ) : (
-            <ConsoleCommand game={game} selected={sel} gamma={gamma} iniOnly={iniOnly.map((o) => o.name)} />
+            <ASACommand selected={sel} gamma={gamma} />
           )}
         </>
       )}
@@ -139,10 +122,8 @@ function GraphicsCard() {
   );
 }
 
-function OptionGroup({ title, game, mode, options, selected, onToggle }: { title: string; game: Game; mode: Mode; options: Option[]; selected: string[]; onToggle: (id: string) => void }) {
+function OptionGroup({ title, options, selected, onToggle }: { title: string; options: Option[]; selected: string[]; onToggle: (id: string) => void }) {
   if (options.length === 0) return null;
-  // ASE 用控制台时显示控制台写法，否则显示 ini（ASA 的 lines 本身就是控制台命令）
-  const aseConsole = game === "ase" && mode === "console";
   return (
     <div className="opt-group">
       <h3>{title}</h3>
@@ -151,16 +132,12 @@ function OptionGroup({ title, game, mode, options, selected, onToggle }: { title
           <label key={o.id} className={`opt ${selected.includes(o.id) ? "on" : ""}`}>
             <input type="checkbox" checked={selected.includes(o.id)} onChange={() => onToggle(o.id)} />
             <span className="opt-body">
-              <span className="opt-name">
-                {o.name}
-                {aseConsole && !(o.console?.length ?? 0) && <span className="opt-tag">仅 ini</span>}
-              </span>
+              <span className="opt-name">{o.name}</span>
               <span className="opt-desc">{o.desc}</span>
               {o.side_effect && <span className="opt-side">副作用：{o.side_effect}</span>}
-              {aseConsole && o.console_note && <span className="opt-desc">控制台：{o.console_note}</span>}
               <details className="opt-lines" onClick={(e) => e.stopPropagation()}>
                 <summary>参数</summary>
-                <code>{(aseConsole ? o.console ?? [] : o.lines ?? []).join("\n") || "（控制台里改不了，只能写进 ini）"}</code>
+                <code>{(o.lines ?? []).join("\n")}</code>
               </details>
             </span>
           </label>
@@ -219,7 +196,9 @@ function ASEApply({ selected, gamma, onLoaded }: { selected: string[]; gamma: nu
   };
 
   const applied = st?.applied ?? [];
-  const dirty = !sameSet(applied, selected);
+  const outdated = !!st?.outdated;
+  // 旧版本写入的要允许重新应用，选择没变也可以点
+  const dirty = outdated || !sameSet(applied, selected);
   return (
     <div className="apply">
       {st && !st.found ? (
@@ -231,12 +210,13 @@ function ASEApply({ selected, gamma, onLoaded }: { selected: string[]; gamma: nu
             {applied.length > 0 ? `，当前已生效 ${applied.length} 项` : "，目前没有助手的修改"}
             {st?.error && <span className="bad"> · {st.error}</span>}
           </p>
+          {outdated && <p className="small-text warn-text">文件里是旧版本助手写入的设置，部分选项的参数已经更新，点「更新设置」重新应用。</p>}
           <div className="btns">
             <button className="primary" disabled={busy || !st || selected.length === 0 || !dirty} onClick={() => run(() => ToolsService.ASEApply(selected), "已生效")}>
               {busy ? <span className="spinner" /> : null}
-              {applied.length > 0 && dirty ? "更新设置" : "应用"}
+              {(applied.length > 0 || outdated) && dirty ? "更新设置" : "应用"}
             </button>
-            <button className="ghost" disabled={busy || applied.length === 0} onClick={() => run(() => ToolsService.ASERestore(), "已去掉助手的修改")}>
+            <button className="ghost" disabled={busy || (applied.length === 0 && !outdated)} onClick={() => run(() => ToolsService.ASERestore(), "已去掉助手的修改")}>
               去掉助手的修改
             </button>
             <button className="danger" disabled={busy || !st?.backup.exists} onClick={() => setConfirm(true)}>
@@ -283,24 +263,18 @@ function ASEApply({ selected, gamma, onLoaded }: { selected: string[]; gamma: nu
   );
 }
 
-function ConsoleCommand({ game, selected, gamma, iniOnly }: { game: Game; selected: string[]; gamma: number; iniOnly: string[] }) {
+function ASACommand({ selected, gamma }: { selected: string[]; gamma: number }) {
   const [cmd, setCmd] = useState("");
   useEffect(() => {
-    const t = setTimeout(() => ToolsService.ConsoleCommand(game, selected, gamma).then(setCmd), 150);
+    const t = setTimeout(() => ToolsService.ASACommand(selected, gamma).then(setCmd), 150);
     return () => clearTimeout(t);
-  }, [game, selected, gamma]);
+  }, [selected, gamma]);
   return (
     <div className="apply">
       {cmd ? (
-        <CommandBox label="进入游戏后按 Tab 打开控制台，粘贴后回车。不改任何文件，重启游戏恢复默认" command={cmd} wrap />
+        <CommandBox label="进入游戏后按 Tab 打开控制台，粘贴后回车。重启游戏恢复默认" command={cmd} wrap />
       ) : (
         <p className="muted small-text">选择上面的选项或档位，生成控制台命令。</p>
-      )}
-      {iniOnly.length > 0 && <p className="small-text warn-text">这些选项在控制台里改不了，没有包含在命令里，要用就切到「写入 ini」：{iniOnly.join("、")}</p>}
-      {game === "ase" && cmd && (
-        <p className="muted small-text">
-          ASE 的控制台写法还没有逐条实测，有的命令在服务器上可能不生效。如果只生效了第一条，说明不能一次输入多条，可以展开每一项的「参数」分开输入。想每次进游戏都生效，用「写入 ini」。
-        </p>
       )}
     </div>
   );

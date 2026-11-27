@@ -25,20 +25,8 @@ type Option struct {
 	Name       string   `json:"name"`
 	Desc       string   `json:"desc"`
 	SideEffect string   `json:"side_effect"` // 副作用，没有为空
+	Tip        string   `json:"tip"`         // 选了这一项时要玩家自己做的事（例如加启动项），没有为空
 	Lines      []string `json:"lines"`
-	// Console 是 ASE 在游戏控制台里的写法（重启游戏恢复默认），空表示只能写进 ini。
-	// 只读参数（r.DefaultFeature.*）和 ShowFlag.* 不能在运行时改，只在 ini 里。ASA 不用这个字段。
-	Console []string `json:"console"`
-	// ConsoleNote 说明控制台写法和 ini 的差别，没有差别为空。
-	ConsoleNote string `json:"console_note"`
-}
-
-// ConsoleLines 返回选项在控制台里执行的命令：ASA 是 Lines，ASE 是 Console。
-func (c Catalog) ConsoleLines(o Option) []string {
-	if c.Game == ASA {
-		return o.Lines
-	}
-	return o.Console
 }
 
 // Preset 是一键档位，按顺序启用 Options 里的选项。
@@ -89,76 +77,97 @@ func For(g Game) Catalog {
 	return aseCatalog
 }
 
+// ASE 的 ShowFlag 名字和实际效果对不上（例如 VisualizeLPV 关的是天空、GameplayDebug 去的是水面），
+// 这里每一项都按社区实测的对应关系写：入梦方舟小工具公开的单项写法、B 站棱煋的「战斗画质进阶版」、
+// ARKCademy 各档预设的对比。不要按名字猜着加。
 var aseCatalog = Catalog{
 	Game: ASE,
 	Options: []Option{
 		{
 			ID: "post", Group: GroupPerf, Name: "关闭后处理特效",
-			Desc:        "关掉泛光、景深、动态模糊、镜头光晕、色差和自动曝光，画面更干净，帧数更高",
-			Lines:       []string{"r.BloomQuality=0", "r.DepthOfFieldQuality=0", "r.MotionBlurQuality=0", "r.LensFlareQuality=0", "r.SceneColorFringeQuality=0", "r.SceneColorFringe.Max=0", "r.TonemapperQuality=0", "r.DefaultFeature.Bloom=False", "r.DefaultFeature.AutoExposure=False", "r.DefaultFeature.MotionBlur=False", "r.DefaultFeature.LensFlare=False", "r.LightFunctionQuality=0", "r.SSS.Scale=0", "r.SSS.SampleSet=0"},
-			Console:     []string{"r.BloomQuality 0", "r.DepthOfFieldQuality 0", "r.MotionBlurQuality 0", "r.LensFlareQuality 0", "r.SceneColorFringeQuality 0", "r.TonemapperQuality 0", "r.LightFunctionQuality 0", "r.SSS.Scale 0"},
-			ConsoleNote: "自动曝光等启动时才读取的参数只能写进 ini",
+			Desc:  "关掉泛光、景深、动态模糊、镜头光晕、色差和自动曝光，画面更干净，帧数更高",
+			Lines: []string{"r.BloomQuality=0", "r.DepthOfFieldQuality=0", "r.MotionBlurQuality=0", "r.LensFlareQuality=0", "r.SceneColorFringeQuality=0", "r.TonemapperQuality=0", "r.DefaultFeature.Bloom=False", "r.DefaultFeature.AutoExposure=False", "r.DefaultFeature.MotionBlur=False", "r.DefaultFeature.LensFlare=False", "r.LightFunctionQuality=0", "r.SSS.Scale=0", "r.SSS.SampleSet=0"},
 		},
 		{
 			ID: "shadows", Group: GroupPerf, Name: "去除阴影",
 			Desc:       "关掉动态阴影，低配电脑帧数提升最明显",
 			SideEffect: "物体没有影子，立体感变差",
 			Lines:      []string{"r.ShadowQuality=0", "r.Shadow.CSM.MaxCascades=1", "r.Shadow.MaxResolution=2", "r.Shadow.MinResolution=2", "r.Shadow.RadiusThreshold=0.1", "r.Shadow.DistanceScale=0.1", "r.Shadow.CSM.TransitionScale=0"},
-			Console:    []string{"r.ShadowQuality 0", "r.Shadow.CSM.MaxCascades 1", "r.Shadow.MaxResolution 2", "r.Shadow.DistanceScale 0.1"},
 		},
 		{
 			ID: "reflections", Group: GroupPerf, Name: "去除反射和环境光遮蔽",
-			Desc:    "关掉屏幕空间反射、反射环境和环境光遮蔽（AO）",
-			Lines:   []string{"r.SSR.Quality=0", "r.ReflectionEnvironment=0", "r.AmbientOcclusionLevels=0", "r.DefaultFeature.AmbientOcclusion=False", "r.RefractionQuality=0"},
-			Console: []string{"r.SSR.Quality 0", "r.ReflectionEnvironment 0", "r.AmbientOcclusionLevels 0", "r.RefractionQuality 0"},
+			Desc:  "关掉屏幕空间反射、反射环境和环境光遮蔽（AO）",
+			Lines: []string{"r.SSR.Quality=0", "r.ReflectionEnvironment=0", "r.AmbientOcclusionLevels=0", "r.DefaultFeature.AmbientOcclusion=False"},
 		},
 		{
-			ID: "sky", Group: GroupCombat, Name: "去除云层和天空",
-			Desc:        "去掉云层和大气散射，天空变暗，远处不再发白",
-			SideEffect:  "天空是黑的",
-			Lines:       []string{"r.TrueSkyQuality=0", "r.Atmosphere=0", "ShowFlag.Atmosphere=0"},
-			Console:     []string{"r.TrueSkyQuality 0", "r.Atmosphere 0"},
-			ConsoleNote: "ShowFlag 部分只能写进 ini，控制台效果可能弱一些",
+			ID: "sky", Group: GroupCombat, Name: "关闭天空和云层",
+			Desc:       "去掉天空和云层，抬头看飞行坐骑不再被云挡住、不再晃眼",
+			SideEffect: "天空是黑的",
+			Lines:      []string{"ShowFlag.VisualizeLPV=0", "r.TrueSkyQuality=0"},
 		},
 		{
 			ID: "fog", Group: GroupCombat, Name: "除雾",
-			Desc:  "去掉大气雾，远处看得更清楚",
-			Lines: []string{"ShowFlag.AtmosphericFog=0", "FogDensity=0.0"},
+			Desc:  "去掉大气雾和远处的雾气、景深，沼泽和远处看得更清楚",
+			Lines: []string{"ShowFlag.AtmosphericFog=0", "ShowFlag.Atmosphere=0", "r.Atmosphere=0", "FogDensity=0.0", "ShowFlag.StaticMeshes=0", "ShowFlag.DepthOfField=0"},
 		},
 		{
 			ID: "lightshafts", Group: GroupCombat, Name: "去除光柱",
-			Desc:    "去掉阳光的光柱（丁达尔效应），逆光时不再晃眼",
-			Lines:   []string{"r.LightShafts=0", "r.LightShaftQuality=0"},
-			Console: []string{"r.LightShafts 0", "r.LightShaftQuality 0"},
+			Desc:  "去掉阳光的光柱（丁达尔效应），逆光时不再晃眼",
+			Lines: []string{"r.LightShafts=0", "r.LightShaftQuality=0"},
 		},
 		{
 			ID: "underwater", Group: GroupCombat, Name: "去除水下致盲",
-			Desc:        "水下和洞穴里看得清楚，不用穿潜水服",
-			SideEffect:  "泰克头盔、雪鸮、血尾虫的透视 / 扫描能力不能用",
-			Lines:       []string{"r.CustomDepth=0"},
-			Console:     []string{"r.CustomDepth 0"},
-			ConsoleNote: "控制台里改可能要重新进游戏才生效，不行就写进 ini",
+			Desc:       "去掉水下的模糊和变暗，不穿潜水服也看得清楚",
+			SideEffect: "泰克头盔的扫描类能力可能不能用",
+			Lines:      []string{"ShowFlag.Materials=0", "r.SceneColorFringe.Max=0"},
 		},
 		{
-			ID: "foliage", Group: GroupCombat, Name: "去除地面植被",
-			Desc:        "去掉草和地面装饰物，地上的东西更容易看到。实验性，部分版本可能无效",
-			SideEffect:  "地面光秃秃的",
-			Lines:       []string{"foliage.UseOcclusionType=0", "grass.DensityScale=0", "foliage.DensityScale=0"},
-			Console:     []string{"grass.DensityScale 0", "foliage.DensityScale 0"},
-			ConsoleNote: "可能无效",
+			ID: "refraction", Group: GroupCombat, Name: "关闭折射",
+			Desc:  "去掉水下、火焰和热浪的画面扭曲",
+			Lines: []string{"ShowFlag.Refraction=0", "r.RefractionQuality=0"},
 		},
 		{
-			ID: "translucency", Group: GroupCombat, Name: "去除水面和树叶",
-			Desc:       "去掉水面和部分半透明的树叶，相当于社区 Hard 档。实验性",
-			SideEffect: "看不到建筑摆放预览、畸变金属和硅珍珠，泰克武器和泰克复制器的光效消失，很多物品变黑",
-			Lines:      []string{"ShowFlag.SeparateTranslucency=0", "ShowFlag.Translucency=0"},
+			ID: "leaves", Group: GroupCombat, Name: "去除树叶和灌木丛",
+			Desc:       "树只剩树干，灌木丛消失，躲在树丛里的人和恐龙藏不住",
+			SideEffect: "地上的部分资源显示不出来",
+			Lines:      []string{"foliage.UseOcclusionType=0"},
+		},
+		{
+			ID: "fullbright", Group: GroupCombat, Name: "地图表面覆盖光",
+			Desc:       "去除黑暗，夜里和洞穴里像白天一样亮，帧数也会大幅提升",
+			SideEffect: "雪山会飘雪花；部分地图（如瓦尔盖罗）屏幕会半黑半白，要加启动项",
+			Tip:        "开了「地图表面覆盖光」后，部分地图屏幕会半黑半白：在 Steam 库里右键 ARK: Survival Evolved →「属性」→「启动选项」加上 -sm4，再启动游戏",
+			Lines:      []string{"ShowFlag.LightComplexity=0"},
+		},
+		{
+			ID: "specular", Group: GroupCombat, Name: "覆盖反射效果",
+			Desc:  "去掉物体表面的高光反光，金属和水面不再刺眼",
+			Lines: []string{"ShowFlag.OverrideDiffuseAndSpecular=0"},
+		},
+		{
+			ID: "water", Group: GroupCombat, Name: "去除水面",
+			Desc:       "水面消失，水里的东西直接看得到",
+			SideEffect: "看不出水的边界；粒子特效也一起去掉",
+			Lines:      []string{"ShowFlag.GameplayDebug=0"},
+		},
+		{
+			ID: "particles", Group: GroupCombat, Name: "关闭粒子特效",
+			Desc:       "去掉火焰、爆炸、烟雾和畸变的光点，炸家和打团时不挡视线",
+			SideEffect: "部分武器和技能的特效看不到",
+			Lines:      []string{"ShowFlag.Navigation=0"},
+		},
+		{
+			ID: "terrain", Group: GroupCombat, Name: "纯地形模式",
+			Desc:       "树、石头和地面植被全部隐藏，只剩地形、建筑和生物",
+			SideEffect: "所有采集资源都看不到，采集时要关掉",
+			Lines:      []string{"foliage.CullAll=1"},
 		},
 	},
 	Presets: []Preset{
 		{ID: "perf", Name: "性能", Desc: "只提帧数，不改能看到的东西", Options: []string{"post", "shadows", "reflections"}},
-		{ID: "soft", Name: "柔和战斗", Desc: "去云、去雾、去光柱，保留泰克头盔，水下照常", Options: []string{"post", "shadows", "reflections", "sky", "fog", "lightshafts"}},
-		{ID: "pvp", Name: "战斗", Desc: "在柔和战斗的基础上水下和洞穴变清楚，泰克头盔失效", Options: []string{"post", "shadows", "reflections", "sky", "fog", "lightshafts", "underwater", "foliage"}},
-		{ID: "hard", Name: "极限", Desc: "再去掉水面和树叶，副作用很多", Options: []string{"post", "shadows", "reflections", "sky", "fog", "lightshafts", "underwater", "foliage", "translucency"}},
+		{ID: "soft", Name: "柔和战斗", Desc: "去天空、除雾、去光柱，泰克头盔和水下照常", Options: []string{"post", "shadows", "reflections", "sky", "fog", "lightshafts"}},
+		{ID: "pvp", Name: "战斗", Desc: "柔和战斗 + 去水下致盲、关折射、去树叶", Options: []string{"post", "shadows", "reflections", "sky", "fog", "lightshafts", "underwater", "refraction", "leaves"}},
+		{ID: "hard", Name: "极限", Desc: "战斗 + 覆盖光、去反光、去水面、关粒子，副作用多", Options: []string{"post", "shadows", "reflections", "sky", "fog", "lightshafts", "underwater", "refraction", "leaves", "fullbright", "specular", "water", "particles"}},
 	},
 }
 
@@ -197,6 +206,22 @@ var asaCatalog = Catalog{
 			Desc:       "降低贴图精度，省显存",
 			SideEffect: "贴图模糊",
 			Lines:      []string{"sg.TextureQuality 0", "r.MipMapLODBias 1"},
+		},
+		{
+			ID: "resolution", Group: GroupPerf, Name: "降低渲染分辨率",
+			Desc:       "按一半分辨率渲染再放大，同时加锐化，显卡吃力时帧数提升很大",
+			SideEffect: "画面变糊",
+			Lines:      []string{"r.ScreenPercentage 50", "r.Tonemapper.Sharpen 2"},
+		},
+		{
+			ID: "statfps", Group: GroupPerf, Name: "显示帧数",
+			Desc:  "在屏幕上显示帧数。这是开关命令，再执行一次就隐藏",
+			Lines: []string{"stat fps"},
+		},
+		{
+			ID: "skylight", Group: GroupCombat, Name: "提亮暗处",
+			Desc:  "加强天光，关掉全局光照后室内、洞穴和夜里不再一片黑",
+			Lines: []string{"r.SkylightIntensityMultiplier 3"},
 		},
 		{
 			ID: "clouds", Group: GroupCombat, Name: "去除云层",
@@ -257,7 +282,9 @@ var asaCatalog = Catalog{
 	Presets: []Preset{
 		{ID: "quality", Name: "质量优化", Desc: "去云、除雾、去水下致盲，其他不变", Options: []string{"clouds", "fog", "underwater"}},
 		{ID: "balanced", Name: "平衡优化", Desc: "质量优化 + 去草和地面杂物", Options: []string{"clouds", "fog", "underwater", "grass"}},
-		{ID: "perf", Name: "性能优化", Desc: "平衡优化 + 去阴影、关全局光照、关后处理", Options: []string{"fps", "post", "shadows", "lumen", "debris", "clouds", "fog", "underwater", "grass"}},
-		{ID: "pvp", Name: "战斗", Desc: "性能优化 + 去天空、光柱、水面反光、粒子，低材质", Options: []string{"fps", "post", "shadows", "lumen", "debris", "textures", "clouds", "fog", "sky", "lightshafts", "underwater", "water", "grass", "particles"}},
+		{ID: "perf", Name: "性能优化", Desc: "平衡优化 + 去阴影、关全局光照、关后处理，提亮暗处", Options: []string{"fps", "post", "shadows", "lumen", "debris", "skylight", "clouds", "fog", "underwater", "grass"}},
+		{ID: "pvp", Name: "战斗", Desc: "性能优化 + 去天空、光柱、水面反光、粒子，低材质", Options: []string{"fps", "post", "shadows", "lumen", "debris", "textures", "skylight", "clouds", "fog", "sky", "lightshafts", "underwater", "water", "grass", "particles"}},
+		// 畸变的洞穴靠全局光照上色，关掉后洞里会丢失颜色，所以不带 lumen
+		{ID: "aberration", Name: "畸变", Desc: "战斗档去掉「关闭全局光照」，畸变洞里不丢颜色。这次游戏里已经关过全局光照的话，先重启游戏", Options: []string{"fps", "post", "shadows", "debris", "textures", "skylight", "clouds", "fog", "sky", "lightshafts", "underwater", "water", "grass", "particles"}},
 	},
 }

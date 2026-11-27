@@ -22,6 +22,13 @@ import * as graphics$0 from "./internal/graphics/models.js";
 import * as $models from "./models.js";
 
 /**
+ * ASACommand 生成 ASA 的控制台命令，并记住这次的选择。gamma 为 0 表示不调。
+ */
+export function ASACommand(ids: string[] | null, gamma: number): $CancellablePromise<string> {
+    return $Call.ByID(4204335846, ids, gamma);
+}
+
+/**
  * ASEApply 把所选选项写进 BaseDeviceProfiles.ini（生效前先备份原文件），重启游戏后生效。
  */
 export function ASEApply(ids: string[] | null): $CancellablePromise<$models.ASEGraphicsStatus> {
@@ -71,14 +78,6 @@ export function ClickerToggle(): $CancellablePromise<clicker$0.State> {
 }
 
 /**
- * ConsoleCommand 生成游戏版本（"ase" / "asa"）的控制台命令，没有控制台写法的选项跳过。
- * gamma 为 0 表示不调。会记住 ASA 的选择和伽马。
- */
-export function ConsoleCommand(game: string, ids: string[] | null, gamma: number): $CancellablePromise<string> {
-    return $Call.ByID(1114847404, game, ids, gamma);
-}
-
-/**
  * GammaCommand 返回调整伽马的控制台命令（ASE 在游戏控制台里输入）。
  */
 export function GammaCommand(gamma: number): $CancellablePromise<string> {
@@ -97,13 +96,6 @@ export function GraphicsCatalog(game: string): $CancellablePromise<graphics$0.Ca
  */
 export function Prefs(): $CancellablePromise<$models.ToolsPrefs> {
     return $Call.ByID(2095356632);
-}
-
-/**
- * SetASEMode 记住 ASE 的应用方式（"ini" / "console"）。
- */
-export function SetASEMode(mode: string): $CancellablePromise<void> {
-    return $Call.ByID(2969069706, mode);
 }
 
 /**

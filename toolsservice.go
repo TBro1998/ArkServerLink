@@ -20,15 +20,15 @@ type ToolsPrefs struct {
 	Clicker    clicker.Config `json:"clicker"`
 	ASAOptions []string       `json:"asa_options"` // 上次在 ASA 画质里选的选项
 	Gamma      float64        `json:"gamma"`       // 0 表示不调
-	ASEMode    string         `json:"ase_mode"`    // ASE 的应用方式：ini（默认）或 console
 }
 
 // ASEGraphicsStatus 是 ASE 画质文件的状态。
 type ASEGraphicsStatus struct {
 	Found       bool            `json:"found"`
 	Path        string          `json:"path"`
-	Error       string          `json:"error"`   // 找不到或读不了文件的原因
-	Applied     []string        `json:"applied"` // 文件里已生效的选项
+	Error       string          `json:"error"`    // 找不到或读不了文件的原因
+	Applied     []string        `json:"applied"`  // 文件里已生效的选项
+	Outdated    bool            `json:"outdated"` // 是旧版本写入的（选项改过参数或改了名），需要重新应用
 	Backup      graphics.Backup `json:"backup"`
 	GameRunning bool            `json:"game_running"` // 游戏开着时改动要重启游戏才生效
 }
@@ -132,7 +132,7 @@ func (s *ToolsService) ASEStatus() ASEGraphicsStatus {
 		return st
 	}
 	st.Found, st.Path, st.Backup = true, p, graphics.BackupOf(p)
-	if st.Applied, err = graphics.ReadApplied(p); err != nil {
+	if st.Applied, st.Outdated, err = graphics.ReadApplied(p, graphics.For(graphics.ASE)); err != nil {
 		st.Error = "读取 BaseDeviceProfiles.ini 失败：" + err.Error()
 	}
 	return st
@@ -177,29 +177,13 @@ func (s *ToolsService) ASERestoreBackup() (ASEGraphicsStatus, error) {
 	return s.ASEStatus(), nil
 }
 
-// ConsoleCommand 生成游戏版本（"ase" / "asa"）的控制台命令，没有控制台写法的选项跳过。
-// gamma 为 0 表示不调。会记住 ASA 的选择和伽马。
-func (s *ToolsService) ConsoleCommand(game string, ids []string, gamma float64) string {
-	g := graphics.Game(game)
+// ASACommand 生成 ASA 的控制台命令，并记住这次的选择。gamma 为 0 表示不调。
+func (s *ToolsService) ASACommand(ids []string, gamma float64) string {
 	s.mu.Lock()
-	if g == graphics.ASA {
-		s.prefs.ASAOptions = ids
-	}
-	s.prefs.Gamma = gamma
+	s.prefs.ASAOptions, s.prefs.Gamma = ids, gamma
 	s.mu.Unlock()
 	s.savePrefs()
-	return graphics.Command(graphics.For(g), ids, gamma)
-}
-
-// SetASEMode 记住 ASE 的应用方式（"ini" / "console"）。
-func (s *ToolsService) SetASEMode(mode string) {
-	if mode != "console" {
-		mode = "ini"
-	}
-	s.mu.Lock()
-	s.prefs.ASEMode = mode
-	s.mu.Unlock()
-	s.savePrefs()
+	return graphics.Command(graphics.For(graphics.ASA), ids, gamma)
 }
 
 // GammaCommand 返回调整伽马的控制台命令（ASE 在游戏控制台里输入）。

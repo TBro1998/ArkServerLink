@@ -5,9 +5,8 @@ import (
 	"strings"
 )
 
-// 控制台命令：玩家在游戏里按 Tab 打开控制台粘贴执行，重启游戏后恢复默认。ASA 只有这种方式，
-// ASE 也可以用（每个选项的 Console，只读参数只能写进 ini）。
-// 多条命令用 " | " 连成一行，控制台会依次执行。
+// ASA 的画质设置是控制台命令：玩家在游戏里按 Tab 打开控制台粘贴执行，重启游戏后恢复默认。
+// 多条命令用 " | " 连成一行，ASA 的控制台会依次执行。
 
 // GammaMin、GammaMax 是伽马的可选范围，游戏默认 2.2。
 const (
@@ -15,11 +14,11 @@ const (
 	GammaMax = 5.0
 )
 
-// Command 返回所选选项的控制台命令，没有控制台写法的选项跳过。gamma 不在 [GammaMin, GammaMax] 里时不调伽马。
+// Command 返回 ASA 所选选项的控制台命令。gamma 不在 [GammaMin, GammaMax] 里时不调伽马。
 func Command(cat Catalog, ids []string, gamma float64) string {
 	var parts []string
 	for _, o := range cat.Ordered(ids) {
-		parts = append(parts, cat.ConsoleLines(o)...)
+		parts = append(parts, o.Lines...)
 	}
 	if g := GammaCommand(gamma); g != "" {
 		parts = append(parts, g)

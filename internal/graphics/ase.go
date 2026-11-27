@@ -121,6 +121,16 @@ func Applied(ini string) []string {
 	return nil
 }
 
+// Outdated 报告 ini 里助手写入的那一段和用当前目录重新生成的不一样：
+// 选项改过参数或改了名（旧版本写入的），需要重新应用。没有写过时为 false。
+func Outdated(ini string, cat Catalog) bool {
+	ids := Applied(ini)
+	if ids == nil {
+		return false
+	}
+	return Patch(ini, cat, ids) != ini
+}
+
 // dedupeCVars 按顺序展开选项里的 CVar，同名的只留最后一个值。
 func dedupeCVars(opts []Option) []string {
 	var order []string
@@ -238,13 +248,17 @@ func RestoreFile(path string) error {
 	return writeFile(path, out)
 }
 
-// ReadApplied 读出 path 里助手写入的选项。
-func ReadApplied(path string) ([]string, error) {
+// ReadApplied 读出 path 里助手写入的、当前目录里还有的选项，以及这一段是否需要重新应用（见 Outdated）。
+func ReadApplied(path string, cat Catalog) (ids []string, outdated bool, err error) {
 	data, err := os.ReadFile(path)
 	if err != nil {
-		return nil, err
+		return nil, false, err
 	}
-	return Applied(string(data)), nil
+	s := string(data)
+	for _, o := range cat.Ordered(Applied(s)) {
+		ids = append(ids, o.ID)
+	}
+	return ids, Outdated(s, cat), nil
 }
 
 func writeFile(path, content string) error {

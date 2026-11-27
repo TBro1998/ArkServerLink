@@ -27,6 +27,11 @@ export interface ASEGraphicsStatus {
      * 文件里已生效的选项
      */
     "applied": string[] | null;
+
+    /**
+     * 是旧版本写入的（选项改过参数或改了名），需要重新应用
+     */
+    "outdated": boolean;
     "backup": graphics$0.Backup;
 
     /**
@@ -63,11 +68,6 @@ export interface ToolsPrefs {
      * 0 表示不调
      */
     "gamma": number;
-
-    /**
-     * ASE 的应用方式：ini（默认）或 console
-     */
-    "ase_mode": string;
 }
 
 /**

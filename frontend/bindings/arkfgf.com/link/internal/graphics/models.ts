@@ -52,18 +52,12 @@ export interface Option {
      * 副作用，没有为空
      */
     "side_effect": string;
+
+    /**
+     * 选了这一项时要玩家自己做的事（例如加启动项），没有为空
+     */
+    "tip": string;
     "lines": string[] | null;
-
-    /**
-     * Console 是 ASE 在游戏控制台里的写法（重启游戏恢复默认），空表示只能写进 ini。
-     * 只读参数（r.DefaultFeature.*）和 ShowFlag.* 不能在运行时改，只在 ini 里。ASA 不用这个字段。
-     */
-    "console": string[] | null;
-
-    /**
-     * ConsoleNote 说明控制台写法和 ini 的差别，没有差别为空。
-     */
-    "console_note": string;
 }
 
 /**
