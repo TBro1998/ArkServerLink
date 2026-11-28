@@ -13,6 +13,14 @@
 import { Call as $Call, CancellablePromise as $CancellablePromise } from "@wailsio/runtime";
 
 /**
+ * Me 当前玩家在这个玩家站上的数据（JSON 原文）。助手登录了 arkfgf.com 时自动用它登录玩家站，
+ * 没登录时返回的 user 为 null
+ */
+export function Me(base: string): $CancellablePromise<string> {
+    return $Call.ByID(2848596217, base);
+}
+
+/**
  * Normalize 校验玩家粘贴的玩家站地址，返回规范化后的地址
  */
 export function Normalize(raw: string): $CancellablePromise<string> {

@@ -12,7 +12,29 @@ type PortalData = {
   site: { name: string; description: string; qq_group: string; discord: string; links: { title: string; url: string }[] };
   announcements: { id: string; title: string; body: string; pinned: boolean; published_at: string }[];
   servers: PortalServer[];
+  pages?: Page[];
 };
+
+// 通用页面（规则、指南、服务器设置）：只认 heading、paragraph、list、kv 四种块，不认识的跳过
+type Text = string | { zh?: string; en?: string };
+type Block = { type: string; text?: Text; items?: unknown[] };
+type Page = { id: string; kind: string; title: Text; server_key?: string; blocks: Block[] };
+
+type MeData = {
+  user: { steam_id: string; name: string } | null;
+  link_login?: boolean;
+  data?: Record<string, { points: number; total_spent: number; kits?: Record<string, number> }>;
+};
+
+function zhText(t: unknown): string {
+  if (typeof t === "string") return t;
+  if (t && typeof t === "object") {
+    const o = t as Record<string, unknown>;
+    const v = o.zh ?? o.en;
+    return typeof v === "string" ? v : "";
+  }
+  return "";
+}
 
 type PortalServer = {
   key: string;
@@ -31,6 +53,9 @@ type PortalServer = {
   room_id: number;
   next_restart_at: string | null;
   shop: boolean;
+  settings_page?: string;
+  points?: boolean;
+  mods?: { id: string; title: string }[];
 };
 
 type Entry = { blueprint: string; amount: number; quality: number; blueprint_only: boolean };
@@ -184,13 +209,15 @@ function hostOf(url: string): string {
 
 // ---- 一个玩家站 ----
 
-type Tab = "news" | "servers" | "shop";
+type Tab = "news" | "servers" | "pages" | "shop";
 
 function PortalView({ base, inRoom }: { base: string; inRoom: boolean }) {
   const [data, setData] = useState<PortalData | null>(null);
   const [error, setError] = useState("");
   const [tab, setTab] = useState<Tab>("news");
   const [shopKey, setShopKey] = useState("");
+  const [pageId, setPageId] = useState("");
+  const [me, setMe] = useState<MeData | null>(null);
 
   const load = useCallback(async () => {
     try {
@@ -207,6 +234,20 @@ function PortalView({ base, inRoom }: { base: string; inRoom: boolean }) {
     const t = setInterval(() => !document.hidden && load(), REFRESH_MS);
     return () => clearInterval(t);
   }, [load]);
+
+  // 自己在这个玩家站上的数据（点数）：用助手的 arkfgf.com 登录自动登录玩家站，失败时不显示
+  const loadMe = useCallback(async () => {
+    try {
+      setMe(JSON.parse(await PortalService.Me(base)) as MeData);
+    } catch {
+      setMe(null);
+    }
+  }, [base]);
+  useEffect(() => {
+    loadMe();
+    const t = setInterval(() => !document.hidden && loadMe(), 30000);
+    return () => clearInterval(t);
+  }, [loadMe]);
 
   if (!data) {
     return (
@@ -231,12 +272,19 @@ function PortalView({ base, inRoom }: { base: string; inRoom: boolean }) {
   const site = data.site ?? { name: "", description: "", qq_group: "", discord: "", links: [] };
   const servers = data.servers ?? [];
   const shops = servers.filter((s) => s.shop);
+  const pages = data.pages ?? [];
+  const customPages = pages.filter((pg) => pg.kind === "custom");
   const name = site.name || servers[0]?.name || "玩家站";
   const tabs: { id: Tab; label: string }[] = [
     { id: "news", label: `公告（${(data.announcements ?? []).length}）` },
     { id: "servers", label: `服务器（${servers.length}）` },
+    ...(customPages.length ? [{ id: "pages" as Tab, label: "指南" }] : []),
     ...(shops.length ? [{ id: "shop" as Tab, label: "商店" }] : []),
   ];
+  const openPage = (id: string) => {
+    setPageId(id);
+    setTab("pages");
+  };
 
   return (
     <div className="room portal">
@@ -253,6 +301,7 @@ function PortalView({ base, inRoom }: { base: string; inRoom: boolean }) {
         )}
       </div>
       <Contacts site={site} />
+      {me?.user && <p className="muted small-text">已用 {me.user.name || me.user.steam_id} 登录这个玩家站</p>}
       {error && <p className="bad small-text">刷新失败：{error}（显示的是上一次的内容）</p>}
 
       <div className="seg portal-tabs">
@@ -264,8 +313,11 @@ function PortalView({ base, inRoom }: { base: string; inRoom: boolean }) {
       </div>
 
       {tab === "news" && <News items={data.announcements ?? []} />}
-      {tab === "servers" && <Servers servers={servers} onShop={(k) => (setShopKey(k), setTab("shop"))} />}
-      {tab === "shop" && shops.length > 0 && <ShopTab base={base} servers={shops} selected={shopKey || shops[0].key} onSelect={setShopKey} />}
+      {tab === "servers" && <Servers servers={servers} onShop={(k) => (setShopKey(k), setTab("shop"))} onPage={openPage} />}
+      {tab === "pages" && <Pages pages={pages} servers={servers} selected={pageId || customPages[0]?.id || ""} onSelect={setPageId} />}
+      {tab === "shop" && shops.length > 0 && (
+        <ShopTab base={base} servers={shops} selected={shopKey || shops[0].key} onSelect={setShopKey} me={me} />
+      )}
     </div>
   );
 }
@@ -312,7 +364,7 @@ function News({ items }: { items: PortalData["announcements"] }) {
 
 const statusText: Record<string, string> = { online: "在线", starting: "启动中", offline: "离线" };
 
-function Servers({ servers, onShop }: { servers: PortalServer[]; onShop: (key: string) => void }) {
+function Servers({ servers, onShop, onPage }: { servers: PortalServer[]; onShop: (key: string) => void; onPage: (id: string) => void }) {
   const [copied, setCopied] = useState("");
   if (servers.length === 0) return <p className="muted">没有服务器</p>;
   const copy = async (k: string, text: string) => {
@@ -356,18 +408,94 @@ function Servers({ servers, onShop }: { servers: PortalServer[]; onShop: (key: s
             ) : s.room_id > 0 ? (
               <p className="muted small-text">P2P 联机房 {s.room_id}，在「联机大厅」里加入进服</p>
             ) : null}
-            {s.shop && (
-              <div>
+            {(s.mods ?? []).length > 0 && (
+              <div className="sv-facts">
+                <span>Mod：{(s.mods ?? []).map((m) => m.title || m.id).join("、")}</span>
+              </div>
+            )}
+            <div className="btns">
+              {s.settings_page && (
+                <button className="ghost small" onClick={() => onPage(s.settings_page!)}>
+                  服务器设置
+                </button>
+              )}
+              {s.shop && (
                 <button className="ghost small" onClick={() => onShop(s.key)}>
                   查看商店
                 </button>
-              </div>
-            )}
+              )}
+            </div>
           </div>
         );
       })}
     </div>
   );
+}
+
+// ---- 页面 ----
+
+function pageTitle(pg: Page, servers: PortalServer[]): string {
+  const title = zhText(pg.title);
+  const sv = pg.server_key ? servers.find((s) => s.key === pg.server_key) : undefined;
+  return sv ? `${title} · ${sv.name}` : title;
+}
+
+function Pages({ pages, servers, selected, onSelect }: { pages: Page[]; servers: PortalServer[]; selected: string; onSelect: (id: string) => void }) {
+  const custom = pages.filter((pg) => pg.kind === "custom");
+  const page = pages.find((pg) => pg.id === selected);
+  return (
+    <div className="portal-shop">
+      {custom.length > 1 && (
+        <div className="seg portal-tabs">
+          {custom.map((pg) => (
+            <button key={pg.id} className={pg.id === selected ? "on" : ""} onClick={() => onSelect(pg.id)}>
+              {zhText(pg.title)}
+            </button>
+          ))}
+        </div>
+      )}
+      {!page ? (
+        <p className="muted">页面不存在</p>
+      ) : (
+        <div className="room-server portal-page">
+          <h3>{pageTitle(page, servers)}</h3>
+          {page.blocks.map((b, i) => (
+            <BlockView key={i} block={b} />
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
+function BlockView({ block }: { block: Block }) {
+  switch (block.type) {
+    case "heading":
+      return <h4 className="portal-h">{zhText(block.text)}</h4>;
+    case "paragraph":
+      return <p className="desc">{zhText(block.text)}</p>;
+    case "list":
+      return (
+        <ul className="portal-ul">
+          {(block.items ?? []).map((it, i) => (
+            <li key={i}>{zhText(it)}</li>
+          ))}
+        </ul>
+      );
+    case "kv":
+      return (
+        <dl className="portal-kv">
+          {((block.items ?? []) as { label: unknown; value: unknown }[]).map((it, i) => (
+            <div key={i}>
+              <dt>{zhText(it.label)}</dt>
+              <dd>{typeof it.value === "boolean" ? (it.value ? "开" : "关") : String(it.value ?? "")}</dd>
+            </div>
+          ))}
+        </dl>
+      );
+    default:
+      return null;
+  }
 }
 
 // ---- 商店 ----
@@ -415,7 +543,8 @@ function reqText(r: Req & { only_from_spawn?: boolean }): string[] {
   return out;
 }
 
-function ShopTab({ base, servers, selected, onSelect }: { base: string; servers: PortalServer[]; selected: string; onSelect: (k: string) => void }) {
+function ShopTab({ base, servers, selected, onSelect, me }: { base: string; servers: PortalServer[]; selected: string; onSelect: (k: string) => void; me: MeData | null }) {
+  const mine = me?.user && servers.find((s) => s.key === selected)?.points ? me.data?.[selected] : undefined;
   const [shop, setShop] = useState<Shop | null>(null);
   const [error, setError] = useState("");
   const [kind, setKind] = useState<"items" | "kits" | "sell">("items");
@@ -468,6 +597,11 @@ function ShopTab({ base, servers, selected, onSelect }: { base: string; servers:
           <p className="muted small-text">
             在游戏里按 Enter 打开聊天框，粘贴命令购买；点数不够或不满足条件时游戏里会提示。查看点数：<code>{shop.commands.points}</code>
           </p>
+          {mine && (
+            <p className="portal-price">
+              我的点数：{mine.points}（已花 {mine.total_spent}）
+            </p>
+          )}
           <div className="portal-shop-bar">
             <div className="seg">
               <button className={kind === "items" ? "on" : ""} onClick={() => setKind("items")}>
@@ -512,7 +646,7 @@ function ShopTab({ base, servers, selected, onSelect }: { base: string; servers:
                   title={k.description || k.name}
                   price={k.price !== null ? `${k.price} 点` : "免费"}
                   lines={[...k.items.map(entryLine), ...k.dinos.map(dinoLine), ...k.commands]}
-                  meta={`名称 ${k.name}${k.default_amount > 0 ? ` · 每人免费 ${k.default_amount} 次` : ""}`}
+                  meta={`名称 ${k.name}${k.default_amount > 0 ? ` · 每人免费 ${k.default_amount} 次` : ""}${mine?.kits?.[k.name] !== undefined ? ` · 你还能领 ${mine.kits[k.name]} 次` : ""}`}
                   reqs={reqText(k)}
                   commands={[
                     ...(k.default_amount > 0 ? [{ label: "领取", amount: false, build: () => `${shop.commands.kit} ${k.name}` }] : []),

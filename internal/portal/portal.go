@@ -32,8 +32,9 @@ type Client struct {
 	http      *http.Client
 	userAgent string
 
-	mu    sync.Mutex
-	cache map[string]cached
+	mu       sync.Mutex
+	cache    map[string]cached
+	sessions map[string]string // 玩家站地址 → 会话
 }
 
 type cached struct {
@@ -53,6 +54,7 @@ func New(version string) *Client {
 		},
 		userAgent: "ArkServerLink/" + version,
 		cache:     map[string]cached{},
+		sessions:  map[string]string{},
 	}
 }
 

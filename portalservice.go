@@ -5,6 +5,7 @@ import (
 	"errors"
 	"sync"
 
+	"arkfgf.com/link/internal/arkfgf"
 	"arkfgf.com/link/internal/portal"
 	"github.com/wailsapp/wails/v3/pkg/application"
 )
@@ -14,6 +15,8 @@ import (
 // 返回的是玩家站接口的 JSON 原文，前端按 ArkPlayerPortal/docs/snapshot.md 解析，只当纯文本显示。
 type PortalService struct {
 	client *portal.Client
+	api    *arkfgf.Client
+	auth   *AuthService
 
 	mu      sync.Mutex
 	pending string // 通过 arkfgf-link://portal 链接请求打开、前端还没取走的玩家站地址
@@ -33,6 +36,27 @@ func (s *PortalService) Shop(ctx context.Context, base, key string) (string, err
 		return "", nil
 	}
 	return body, err
+}
+
+// Me 当前玩家在这个玩家站上的数据（JSON 原文）。助手登录了 arkfgf.com 时自动用它登录玩家站，
+// 没登录时返回的 user 为 null
+func (s *PortalService) Me(ctx context.Context, base string) (string, error) {
+	var issue portal.IssueFunc
+	if token := s.auth.currentToken(); token != "" {
+		issue = func(ctx context.Context, audience string) (string, error) {
+			res, err := s.api.PortalToken(ctx, token, audience)
+			if err != nil {
+				if arkfgf.IsUnauthorized(err) {
+					s.auth.unauthorized()
+				}
+				return "", err
+			}
+			return res.Token, nil
+		}
+	} else {
+		s.client.Forget()
+	}
+	return s.client.Me(ctx, base, issue)
 }
 
 // Normalize 校验玩家粘贴的玩家站地址，返回规范化后的地址

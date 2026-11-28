@@ -2,6 +2,7 @@
 package arkfgf
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"errors"
@@ -309,4 +310,44 @@ func parseRetryAfter(v string) time.Duration {
 		}
 	}
 	return 0
+}
+
+// PortalTokenResult 是 POST /auth/portal-token 的响应。
+type PortalTokenResult struct {
+	Token     string `json:"token"`
+	ExpiresAt int64  `json:"expires_at"`
+}
+
+// PortalToken 用当前登录换一个只对某个玩家站（audience）有效的短期令牌，交给玩家站换它自己的会话。
+// arkfgf.com 的登录令牌本身不发给玩家站。
+func (c *Client) PortalToken(ctx context.Context, token, audience string) (*PortalTokenResult, error) {
+	body, _ := json.Marshal(map[string]string{"audience": audience})
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, c.base+"/auth/portal-token", bytes.NewReader(body))
+	if err != nil {
+		return nil, err
+	}
+	req.Header.Set("User-Agent", c.userAgent)
+	req.Header.Set("Accept", "application/json")
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("Authorization", "Bearer "+token)
+	resp, err := c.http.Do(req)
+	if err != nil {
+		if ctx.Err() != nil {
+			return nil, ctx.Err()
+		}
+		return nil, &NetworkError{Err: err}
+	}
+	defer resp.Body.Close()
+	raw, err := io.ReadAll(io.LimitReader(resp.Body, maxBody))
+	if err != nil {
+		return nil, &NetworkError{Err: err}
+	}
+	if resp.StatusCode < 200 || resp.StatusCode > 299 {
+		return nil, parseError(resp, raw)
+	}
+	var out PortalTokenResult
+	if err := json.Unmarshal(raw, &out); err != nil || out.Token == "" {
+		return nil, fmt.Errorf("arkfgf.com 返回的数据无法解析")
+	}
+	return &out, nil
 }

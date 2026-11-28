@@ -67,7 +67,7 @@ func main() {
 	roomSvc := &RoomService{api: api, auth: authSvc}
 	updateSvc := newUpdateService(api, version)
 	toolsSvc := newToolsService()
-	portalSvc := &PortalService{client: portal.New(version)}
+	portalSvc := &PortalService{client: portal.New(version), api: api, auth: authSvc}
 
 	// 首次启动就是被链接唤起的（Windows 上链接是第一个参数）
 	launchID, _ := deeplink.FindJoin(os.Args[1:])
